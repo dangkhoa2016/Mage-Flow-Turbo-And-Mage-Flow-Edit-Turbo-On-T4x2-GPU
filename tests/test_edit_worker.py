@@ -262,6 +262,205 @@ def test_worker_rejects_non_loopback_bind(monkeypatch):
         main()
 
 
+class _NotReadyEditWorker:
+    ready = False
+    device = "cuda:1"
+
+
+class _ReadyEditWorker:
+    ready = True
+    device = "cuda:1"
+
+    def edit(self, *, image_bytes, prompt, seed):
+        return {
+            "id": "img_test",
+            "status": "completed",
+            "model": "mage-flow-edit-turbo",
+            "device": "cuda:1",
+            "seed": seed,
+            "width": 16,
+            "height": 16,
+            "elapsed_seconds": 1.0,
+            "output": "data:image/png;base64,abc",
+        }
+
+
+class _FailingEditWorker:
+    ready = True
+    device = "cuda:1"
+
+    def edit(self, *, image_bytes, prompt, seed):
+        raise RuntimeError("boom")
+
+
+def test_coordinator_503_when_edit_unavailable(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from server.app import app
+
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    old = app.state.edit_worker
+    app.state.edit_worker = _NotReadyEditWorker()
+    try:
+        client = TestClient(app)
+        response = client.post(
+            "/v1/images/edits",
+            headers={"Authorization": "Bearer test-token"},
+            files={"image": ("source.png", _tiny_png_bytes(), "image/png")},
+            data={"prompt": "make it sunny", "seed": "42"},
+        )
+        assert response.status_code == 503
+        assert response.json()["detail"] == "Edit worker is not ready"
+    finally:
+        app.state.edit_worker = old
+
+
+def test_coordinator_routing_when_edit_ready(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from server.app import app
+
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    old = app.state.edit_worker
+    app.state.edit_worker = _ReadyEditWorker()
+    try:
+        client = TestClient(app)
+        response = client.post(
+            "/v1/images/edits",
+            headers={"Authorization": "Bearer test-token"},
+            files={"image": ("source.png", _tiny_png_bytes(), "image/png")},
+            data={"prompt": "make it sunny", "seed": "42"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["model"] == "mage-flow-edit-turbo"
+        assert data["device"] == "cuda:1"
+        assert data["output"].startswith("data:image/png;base64,")
+    finally:
+        app.state.edit_worker = old
+
+
+def test_coordinator_maps_edit_runtime_error_to_502(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from server.app import app
+
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    old = app.state.edit_worker
+    app.state.edit_worker = _FailingEditWorker()
+    try:
+        client = TestClient(app)
+        response = client.post(
+            "/v1/images/edits",
+            headers={"Authorization": "Bearer test-token"},
+            files={"image": ("source.png", _tiny_png_bytes(), "image/png")},
+            data={"prompt": "make it sunny", "seed": "42"},
+        )
+        assert response.status_code == 502
+        assert "Edit worker request failed" in response.json()["detail"]
+    finally:
+        app.state.edit_worker = old
+
+
+def test_coordinator_edit_requires_image_file_and_returns_422(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from server.app import app
+
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    client = TestClient(app)
+    response = client.post(
+        "/v1/images/edits",
+        headers={"Authorization": "Bearer test-token"},
+        data={"prompt": "make it sunny", "seed": "42"},
+    )
+    assert 400 <= response.status_code < 500
+
+
+def test_coordinator_edit_rejects_empty_image_file_with_400(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from server.app import app
+
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    old = app.state.edit_worker
+    app.state.edit_worker = _ReadyEditWorker()
+    try:
+        client = TestClient(app)
+        response = client.post(
+            "/v1/images/edits",
+            headers={"Authorization": "Bearer test-token"},
+            files={"image": ("empty.png", b"", "image/png")},
+            data={"prompt": "make it sunny", "seed": "42"},
+        )
+        assert response.status_code == 400
+        assert response.json()["detail"] == "image file is empty"
+    finally:
+        app.state.edit_worker = old
+
+
+def test_coordinator_edit_rejects_oversized_upload_with_413(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from server.app import MAX_PUBLIC_UPLOAD_BYTES, app
+
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    old = app.state.edit_worker
+    app.state.edit_worker = _ReadyEditWorker()
+    try:
+        client = TestClient(app)
+        big = b"\x89PNG\r\n\x1a\n" + b"A" * (MAX_PUBLIC_UPLOAD_BYTES)
+        response = client.post(
+            "/v1/images/edits",
+            headers={"Authorization": "Bearer test-token"},
+            files={"image": ("big.png", big, "image/png")},
+            data={"prompt": "make it sunny", "seed": "42"},
+        )
+        assert response.status_code == 413
+        assert "exceeds the public byte limit" in response.json()["detail"]
+    finally:
+        app.state.edit_worker = old
+
+
+def test_coordinator_edit_rejects_unsupported_media_type_with_415(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from server.app import app
+
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    old = app.state.edit_worker
+    app.state.edit_worker = _ReadyEditWorker()
+    try:
+        client = TestClient(app)
+        response = client.post(
+            "/v1/images/edits",
+            headers={"Authorization": "Bearer test-token"},
+            files={"image": ("source.txt", b"hello", "text/plain")},
+            data={"prompt": "make it sunny", "seed": "42"},
+        )
+        assert response.status_code == 415
+        assert "Unsupported media type" in response.json()["detail"]
+    finally:
+        app.state.edit_worker = old
+
+
+def test_edit_t2i_timeout_defaults_are_consistent():
+    from server.workers.edit import (
+        DEFAULT_REQUEST_TIMEOUT_SECONDS as EDIT_TIMEOUT,
+        EditWorkerConfig,
+    )
+    from server.workers.t2i import (
+        DEFAULT_REQUEST_TIMEOUT_SECONDS as T2I_TIMEOUT,
+        T2IWorkerConfig,
+    )
+
+    assert EDIT_TIMEOUT == T2I_TIMEOUT == 3600.0
+    assert EditWorkerConfig().request_timeout_seconds == EDIT_TIMEOUT
+    assert EditWorkerConfig.from_environment({}).request_timeout_seconds == EDIT_TIMEOUT
+    assert T2IWorkerConfig().request_timeout_seconds == T2I_TIMEOUT
+    assert T2IWorkerConfig.from_environment({}).request_timeout_seconds == T2I_TIMEOUT
+
+
 def test_edit_and_t2i_ports_are_disjoint(tmp_path):
     edit_cmd = build_edit_worker_command(
         project_root=tmp_path,
@@ -277,3 +476,117 @@ def test_edit_and_t2i_ports_are_disjoint(tmp_path):
     assert t2i_port == "8101"
     assert "8101" not in edit_cmd[edit_cmd.index("--port"):]
     assert "8102" not in t2i_cmd[t2i_cmd.index("--port"):]
+
+
+class _TrackingReadyEditWorker:
+    def __init__(self):
+        self.ready = True
+        self.device = "cuda:1"
+        self.edit_call_count = 0
+
+    def edit(self, *, image_bytes, prompt, seed):
+        self.edit_call_count += 1
+        return {
+            "id": "img_test",
+            "status": "completed",
+            "model": "mage-flow-edit-turbo",
+            "device": "cuda:1",
+            "seed": seed,
+            "width": 16,
+            "height": 16,
+            "elapsed_seconds": 1.0,
+            "output": "data:image/png;base64,abc",
+        }
+
+
+def test_coordinator_rejects_empty_edit_prompt(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from server.app import app
+
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    old = app.state.edit_worker
+    tracker = _TrackingReadyEditWorker()
+    app.state.edit_worker = tracker
+    try:
+        client = TestClient(app)
+        response = client.post(
+            "/v1/images/edits",
+            headers={"Authorization": "Bearer test-token"},
+            files={"image": ("source.png", _tiny_png_bytes(), "image/png")},
+            data={"prompt": "", "seed": "42"},
+        )
+        assert response.status_code in {400, 422}
+        assert tracker.edit_call_count == 0
+    finally:
+        app.state.edit_worker = old
+
+
+def test_coordinator_rejects_whitespace_edit_prompt(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from server.app import app
+
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    old = app.state.edit_worker
+    tracker = _TrackingReadyEditWorker()
+    app.state.edit_worker = tracker
+    try:
+        client = TestClient(app)
+        response = client.post(
+            "/v1/images/edits",
+            headers={"Authorization": "Bearer test-token"},
+            files={"image": ("source.png", _tiny_png_bytes(), "image/png")},
+            data={"prompt": "   ", "seed": "42"},
+        )
+        assert response.status_code == 400
+        assert "prompt must be a non-empty string" in response.json()["detail"]
+        assert tracker.edit_call_count == 0
+    finally:
+        app.state.edit_worker = old
+
+
+def test_coordinator_rejects_tab_newline_edit_prompt(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from server.app import app
+
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    old = app.state.edit_worker
+    tracker = _TrackingReadyEditWorker()
+    app.state.edit_worker = tracker
+    try:
+        client = TestClient(app)
+        response = client.post(
+            "/v1/images/edits",
+            headers={"Authorization": "Bearer test-token"},
+            files={"image": ("source.png", _tiny_png_bytes(), "image/png")},
+            data={"prompt": "\t\n", "seed": "42"},
+        )
+        assert response.status_code == 400
+        assert "prompt must be a non-empty string" in response.json()["detail"]
+        assert tracker.edit_call_count == 0
+    finally:
+        app.state.edit_worker = old
+
+
+def test_coordinator_rejects_whitespace_edit_prompt_before_readiness(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from server.app import app
+
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    old = app.state.edit_worker
+    app.state.edit_worker = None
+    try:
+        client = TestClient(app)
+        response = client.post(
+            "/v1/images/edits",
+            headers={"Authorization": "Bearer test-token"},
+            files={"image": ("source.png", _tiny_png_bytes(), "image/png")},
+            data={"prompt": "   ", "seed": "42"},
+        )
+        assert response.status_code == 400
+        assert "prompt must be a non-empty string" in response.json()["detail"]
+    finally:
+        app.state.edit_worker = old
