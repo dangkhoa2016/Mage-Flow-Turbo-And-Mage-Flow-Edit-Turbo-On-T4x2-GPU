@@ -1,3 +1,4 @@
+import io
 import json
 from pathlib import Path
 from unittest.mock import patch
@@ -9,6 +10,7 @@ from server.workers.t2i import (
     T2IWorkerConfig,
     build_t2i_worker_command,
 )
+from server.workers.t2i_runtime_server import validate_generation_payload
 
 
 class FakeResponse:
@@ -108,3 +110,21 @@ def test_client_generate_forwards_public_contract():
     assert response == result
     assert captured["url"].endswith("/generate")
     assert captured["body"] == {"prompt": "cat", "seed": 42, "steps": 4, "width": 1024, "height": 1024}
+
+
+def test_runtime_payload_validation_defaults_and_alignment():
+    payload = validate_generation_payload({"prompt": "hello"})
+    assert payload["seed"] == 42
+    assert payload["steps"] == 4
+    assert payload["width"] == 1024
+    assert payload["height"] == 1024
+
+    with pytest.raises(ValueError, match="multiples of 16"):
+        validate_generation_payload({"prompt": "hello", "width": 1001})
+
+
+def test_runtime_payload_rejects_empty_prompt_and_bool_seed():
+    with pytest.raises(ValueError, match="non-empty"):
+        validate_generation_payload({"prompt": ""})
+    with pytest.raises(ValueError, match="seed must be an integer"):
+        validate_generation_payload({"prompt": "hello", "seed": True})
