@@ -128,3 +128,89 @@ def test_runtime_payload_rejects_empty_prompt_and_bool_seed():
         validate_generation_payload({"prompt": ""})
     with pytest.raises(ValueError, match="seed must be an integer"):
         validate_generation_payload({"prompt": "hello", "seed": True})
+
+
+class _ReadyT2IWorker:
+    ready = True
+    device = "cuda:0"
+    generate_call_count = 0
+
+    def generate(self, *, prompt, seed, steps, width, height):
+        _ReadyT2IWorker.generate_call_count += 1
+        return {
+            "id": "img_test",
+            "status": "completed",
+            "model": "mage-flow-turbo",
+            "device": "cuda:0",
+            "seed": seed,
+            "width": width,
+            "height": height,
+            "elapsed_seconds": 1.0,
+            "output": "data:image/png;base64,abc",
+        }
+
+
+def test_coordinator_rejects_empty_t2i_prompt(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from server.app import app
+
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    old = app.state.t2i_worker
+    app.state.t2i_worker = _ReadyT2IWorker()
+    _ReadyT2IWorker.generate_call_count = 0
+    try:
+        client = TestClient(app)
+        response = client.post(
+            "/v1/images/generations",
+            headers={"Authorization": "Bearer test-token"},
+            json={"prompt": ""},
+        )
+        assert response.status_code == 422
+        assert _ReadyT2IWorker.generate_call_count == 0
+    finally:
+        app.state.t2i_worker = old
+
+
+def test_coordinator_rejects_whitespace_t2i_prompt(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from server.app import app
+
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    old = app.state.t2i_worker
+    app.state.t2i_worker = _ReadyT2IWorker()
+    _ReadyT2IWorker.generate_call_count = 0
+    try:
+        client = TestClient(app)
+        response = client.post(
+            "/v1/images/generations",
+            headers={"Authorization": "Bearer test-token"},
+            json={"prompt": "   "},
+        )
+        assert response.status_code == 422
+        assert _ReadyT2IWorker.generate_call_count == 0
+    finally:
+        app.state.t2i_worker = old
+
+
+def test_coordinator_rejects_tab_newline_t2i_prompt(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from server.app import app
+
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    old = app.state.t2i_worker
+    app.state.t2i_worker = _ReadyT2IWorker()
+    _ReadyT2IWorker.generate_call_count = 0
+    try:
+        client = TestClient(app)
+        response = client.post(
+            "/v1/images/generations",
+            headers={"Authorization": "Bearer test-token"},
+            json={"prompt": "\t\n"},
+        )
+        assert response.status_code == 422
+        assert _ReadyT2IWorker.generate_call_count == 0
+    finally:
+        app.state.t2i_worker = old
