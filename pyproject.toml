@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mage-flow-t4x2-production-rest-api-demo"
+version = "0.1.0.dev0"
+description = "Production-style Kaggle NVIDIA T4 x2 REST API demo for Mage-Flow Turbo and Mage-Flow Edit Turbo"
+readme = "README.md"
+license = "MIT"
+authors = [
+  { name = "Đăng Khoa", email = "i.am@dangkhoa.dev" },
+]
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.30,<1",
+  "pydantic>=2.8,<3",
+  "python-multipart>=0.0.9,<1",
+  "requests>=2.32,<3",
+  "pillow>=10,<12",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<9", "httpx>=0.27,<1"]
+
+[tool.setuptools]
+packages = ["server", "server.workers"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
