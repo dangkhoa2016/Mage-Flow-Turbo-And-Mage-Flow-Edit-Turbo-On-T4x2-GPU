@@ -1,0 +1,63 @@
+{
+  "project_phase": "gpu_candidate_pass_pending_publication",
+  "runtime": {
+    "accelerator": "Kaggle NVIDIA T4 x2",
+    "t2i_device": "cuda:0",
+    "edit_device": "cuda:1",
+    "cpu_fallback": false,
+    "coordinator": "localhost"
+  },
+  "public_notebook": "notebooks/mage-flow-turbo-and-mage-flow-edit-turbo-on-t4x2-gpu.ipynb",
+  "license_status": "MIT",
+  "github_repository_created": false,
+  "model_integration_complete": true,
+  "t2i_integration": {
+    "source_implemented": true,
+    "cpu_unit_tested": true,
+    "gpu_acceptance": true,
+    "device": "cuda:0",
+    "internal_url": "http://127.0.0.1:8101",
+    "output_format": "data:image/png;base64",
+    "acceptance_width": 1024,
+    "acceptance_height": 1024,
+    "text_encoder_device": "cpu",
+    "transformer_device": "cuda:0",
+    "vae_device": "cuda:0",
+    "attention_backend": "sdpa",
+    "request_timeout_seconds": 3600
+  },
+  "edit_integration": {
+    "source_implemented": true,
+    "cpu_unit_tested": true,
+    "gpu_acceptance": true,
+    "device": "cuda:1",
+    "internal_url": "http://127.0.0.1:8102",
+    "output_format": "data:image/png;base64",
+    "steps": 4,
+    "cfg": 1.0,
+    "prompt_template": "mage-flow-edit",
+    "vl_cond_long_edge": 384,
+    "neg_prompt": " ",
+    "max_size": 1024,
+    "text_encoder_device": "cpu",
+    "transformer_device": "cuda:1",
+    "vae_device": "cuda:1",
+    "attention_backend": "sdpa"
+  },
+  "public_notebook_validation": {
+    "structural_validation": true,
+    "live_run_all": false,
+    "saved_version_verified": false
+  },
+  "gpu_acceptance": {
+    "accelerator_topology": "NVIDIA T4 x2",
+    "dual_worker_ready": true,
+    "t2i_rest_acceptance": true,
+    "edit_rest_acceptance": true,
+    "resident_worker_reuse": true,
+    "runtime_reextraction_required": false,
+    "vendor_source_modified": false
+  },
+  "github_ci_configured": false,
+  "github_community_metadata_configured": false
+}
