@@ -58,6 +58,6 @@
     "runtime_reextraction_required": false,
     "vendor_source_modified": false
   },
-  "github_ci_configured": false,
+  "github_ci_configured": true,
   "github_community_metadata_configured": false
 }
