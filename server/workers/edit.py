@@ -15,6 +15,7 @@ from ..config import (
     parse_timeout_seconds,
     validate_loopback_http_url,
 )
+from ..worker_contract import validate_edit_worker_response
 
 DEFAULT_INTERNAL_URL = "http://127.0.0.1:8102"
 # Public runtime-root abstraction. MAGE_FLOW_RUNTIME_ROOT overrides the default;
@@ -112,11 +113,7 @@ class EditWorkerClient:
             payload=payload,
             timeout=self.config.request_timeout_seconds,
         )
-        if result.get("status") != "completed":
-            raise RuntimeError(f"Edit worker returned unexpected status: {result.get('status')!r}")
-        if result.get("device") != DEFAULT_DEVICE:
-            raise RuntimeError(f"Edit worker reported unexpected device: {result.get('device')!r}")
-        return result
+        return validate_edit_worker_response(result)
 
     def _request_json(
         self,

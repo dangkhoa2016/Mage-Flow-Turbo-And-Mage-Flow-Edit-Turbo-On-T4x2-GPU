@@ -9,6 +9,8 @@ from server.middleware import (
     RequestBodyLimitMiddleware,
 )
 
+AUTH_TOKEN = "kaggle-demo-test-token-0123456789abcdef0123456789abcdef"
+
 ROUTES = {
     ("POST", "/v1/images/edits"): MAX_EDIT_REQUEST_BODY_BYTES,
     ("POST", "/v1/images/generations"): MAX_T2I_REQUEST_BODY_BYTES,
@@ -153,11 +155,11 @@ def test_app_generation_route_rejects_body_over_64kib(monkeypatch):
 
     from server.app import app
 
-    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     client = TestClient(app)
     response = client.post(
         "/v1/images/generations",
-        headers={"Authorization": "Bearer test-token"},
+        headers={"Authorization": f"Bearer {AUTH_TOKEN}"},
         content=b'{"prompt":"' + b"a" * (64 * 1024) + b'"}',
     )
     assert response.status_code == 413
@@ -169,6 +171,6 @@ def test_app_body_limiter_leaves_public_health_untouched(monkeypatch):
 
     from server.app import app
 
-    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     client = TestClient(app)
     assert client.get("/health").status_code == 200
