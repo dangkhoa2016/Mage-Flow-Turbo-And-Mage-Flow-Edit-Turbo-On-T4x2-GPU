@@ -30,7 +30,7 @@ def _tiny_jpeg_bytes() -> bytes:
 def _runner(tmp_path: Path) -> LiveAcceptance:
     return LiveAcceptance(
         base_url="http://127.0.0.1:8090",
-        token="test-token",
+        token="kaggle-demo-test-token-0123456789abcdef0123456789abcdef",
         output_dir=tmp_path / ".runtime" / "acceptance",
         edit_source=tmp_path / "dog.jpg",
     )

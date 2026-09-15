@@ -205,8 +205,7 @@ class RuntimeState:
             f"seed={request['seed']} steps={EDIT_STEPS} cfg={EDIT_CFG} "
             f"device={self.device} source_size={image.size}",
         )
-        with self.edit_lock:
-            with Heartbeat("edit_generate"):
+        with Heartbeat("edit_generate"):
                 images = self.pipeline.edit(
                     [request["prompt"]],
                     [image],
@@ -296,14 +295,24 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            self._write_json(400, {"detail": str(exc)})
+            return
+
+        if not self.runtime.edit_lock.acquire(blocking=False):
+            self._write_json(409, {"detail": "Edit generation is already running"})
+            return
+        try:
             result = self.runtime.edit(payload)
-        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        except ValueError as exc:
             self._write_json(400, {"detail": str(exc)})
             return
         except Exception as exc:
             log("FAIL", f"edit error: {type(exc).__name__}: {exc}")
             self._write_json(500, {"detail": f"Edit generation failed: {type(exc).__name__}: {exc}"})
             return
+        finally:
+            self.runtime.edit_lock.release()
 
         self._write_json(200, result)
 
@@ -337,6 +346,7 @@ def main() -> None:
         raise
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
+    server.daemon_threads = True
     server.runtime_state = state  # type: ignore[attr-defined]
     log("PASS", f"EDIT_INTERNAL_HTTP_READY http://{args.host}:{args.port}")
     try:

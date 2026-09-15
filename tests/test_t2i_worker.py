@@ -12,6 +12,8 @@ from server.workers.t2i import (
 )
 from server.workers.t2i_runtime_server import validate_generation_payload
 
+AUTH_TOKEN = "kaggle-demo-test-token-0123456789abcdef0123456789abcdef"
+
 
 class FakeResponse:
     def __init__(self, payload):
@@ -230,7 +232,7 @@ def test_coordinator_rejects_empty_t2i_prompt(monkeypatch):
 
     from server.app import app
 
-    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     old = app.state.t2i_worker
     app.state.t2i_worker = _ReadyT2IWorker()
     _ReadyT2IWorker.generate_call_count = 0
@@ -238,7 +240,7 @@ def test_coordinator_rejects_empty_t2i_prompt(monkeypatch):
         client = TestClient(app)
         response = client.post(
             "/v1/images/generations",
-            headers={"Authorization": "Bearer test-token"},
+            headers={"Authorization": f"Bearer {AUTH_TOKEN}"},
             json={"prompt": ""},
         )
         assert response.status_code == 422
@@ -252,7 +254,7 @@ def test_coordinator_rejects_whitespace_t2i_prompt(monkeypatch):
 
     from server.app import app
 
-    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     old = app.state.t2i_worker
     app.state.t2i_worker = _ReadyT2IWorker()
     _ReadyT2IWorker.generate_call_count = 0
@@ -260,7 +262,7 @@ def test_coordinator_rejects_whitespace_t2i_prompt(monkeypatch):
         client = TestClient(app)
         response = client.post(
             "/v1/images/generations",
-            headers={"Authorization": "Bearer test-token"},
+            headers={"Authorization": f"Bearer {AUTH_TOKEN}"},
             json={"prompt": "   "},
         )
         assert response.status_code == 422
@@ -274,7 +276,7 @@ def test_coordinator_rejects_tab_newline_t2i_prompt(monkeypatch):
 
     from server.app import app
 
-    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     old = app.state.t2i_worker
     app.state.t2i_worker = _ReadyT2IWorker()
     _ReadyT2IWorker.generate_call_count = 0
@@ -282,7 +284,7 @@ def test_coordinator_rejects_tab_newline_t2i_prompt(monkeypatch):
         client = TestClient(app)
         response = client.post(
             "/v1/images/generations",
-            headers={"Authorization": "Bearer test-token"},
+            headers={"Authorization": f"Bearer {AUTH_TOKEN}"},
             json={"prompt": "\t\n"},
         )
         assert response.status_code == 422

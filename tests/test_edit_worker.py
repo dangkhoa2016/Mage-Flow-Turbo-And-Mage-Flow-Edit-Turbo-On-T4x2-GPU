@@ -22,6 +22,8 @@ from server.workers.edit_runtime_server import (
 )
 from server.workers.t2i import build_t2i_worker_command, T2IWorkerConfig
 
+AUTH_TOKEN = "kaggle-demo-test-token-0123456789abcdef0123456789abcdef"
+
 
 class FakeResponse:
     def __init__(self, payload):
@@ -309,14 +311,14 @@ def test_coordinator_503_when_edit_unavailable(monkeypatch):
 
     from server.app import app
 
-    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     old = app.state.edit_worker
     app.state.edit_worker = _NotReadyEditWorker()
     try:
         client = TestClient(app)
         response = client.post(
             "/v1/images/edits",
-            headers={"Authorization": "Bearer test-token"},
+            headers={"Authorization": f"Bearer {AUTH_TOKEN}"},
             files={"image": ("source.png", _tiny_png_bytes(), "image/png")},
             data={"prompt": "make it sunny", "seed": "42"},
         )
@@ -331,14 +333,14 @@ def test_coordinator_routing_when_edit_ready(monkeypatch):
 
     from server.app import app
 
-    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     old = app.state.edit_worker
     app.state.edit_worker = _ReadyEditWorker()
     try:
         client = TestClient(app)
         response = client.post(
             "/v1/images/edits",
-            headers={"Authorization": "Bearer test-token"},
+            headers={"Authorization": f"Bearer {AUTH_TOKEN}"},
             files={"image": ("source.png", _tiny_png_bytes(), "image/png")},
             data={"prompt": "make it sunny", "seed": "42"},
         )
@@ -356,14 +358,14 @@ def test_coordinator_maps_edit_runtime_error_to_502(monkeypatch):
 
     from server.app import app
 
-    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     old = app.state.edit_worker
     app.state.edit_worker = _FailingEditWorker()
     try:
         client = TestClient(app)
         response = client.post(
             "/v1/images/edits",
-            headers={"Authorization": "Bearer test-token"},
+            headers={"Authorization": f"Bearer {AUTH_TOKEN}"},
             files={"image": ("source.png", _tiny_png_bytes(), "image/png")},
             data={"prompt": "make it sunny", "seed": "42"},
         )
@@ -378,11 +380,11 @@ def test_coordinator_edit_requires_image_file_and_returns_422(monkeypatch):
 
     from server.app import app
 
-    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     client = TestClient(app)
     response = client.post(
         "/v1/images/edits",
-        headers={"Authorization": "Bearer test-token"},
+        headers={"Authorization": f"Bearer {AUTH_TOKEN}"},
         data={"prompt": "make it sunny", "seed": "42"},
     )
     assert 400 <= response.status_code < 500
@@ -393,14 +395,14 @@ def test_coordinator_edit_rejects_empty_image_file_with_400(monkeypatch):
 
     from server.app import app
 
-    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     old = app.state.edit_worker
     app.state.edit_worker = _ReadyEditWorker()
     try:
         client = TestClient(app)
         response = client.post(
             "/v1/images/edits",
-            headers={"Authorization": "Bearer test-token"},
+            headers={"Authorization": f"Bearer {AUTH_TOKEN}"},
             files={"image": ("empty.png", b"", "image/png")},
             data={"prompt": "make it sunny", "seed": "42"},
         )
@@ -415,7 +417,7 @@ def test_coordinator_edit_rejects_oversized_upload_with_413(monkeypatch):
 
     from server.app import MAX_PUBLIC_UPLOAD_BYTES, app
 
-    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     old = app.state.edit_worker
     app.state.edit_worker = _ReadyEditWorker()
     try:
@@ -423,7 +425,7 @@ def test_coordinator_edit_rejects_oversized_upload_with_413(monkeypatch):
         big = b"\x89PNG\r\n\x1a\n" + b"A" * (MAX_PUBLIC_UPLOAD_BYTES)
         response = client.post(
             "/v1/images/edits",
-            headers={"Authorization": "Bearer test-token"},
+            headers={"Authorization": f"Bearer {AUTH_TOKEN}"},
             files={"image": ("big.png", big, "image/png")},
             data={"prompt": "make it sunny", "seed": "42"},
         )
@@ -438,14 +440,14 @@ def test_coordinator_edit_rejects_unsupported_media_type_with_415(monkeypatch):
 
     from server.app import app
 
-    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     old = app.state.edit_worker
     app.state.edit_worker = _ReadyEditWorker()
     try:
         client = TestClient(app)
         response = client.post(
             "/v1/images/edits",
-            headers={"Authorization": "Bearer test-token"},
+            headers={"Authorization": f"Bearer {AUTH_TOKEN}"},
             files={"image": ("source.txt", b"hello", "text/plain")},
             data={"prompt": "make it sunny", "seed": "42"},
         )
@@ -515,7 +517,7 @@ def test_coordinator_rejects_empty_edit_prompt(monkeypatch):
 
     from server.app import app
 
-    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     old = app.state.edit_worker
     tracker = _TrackingReadyEditWorker()
     app.state.edit_worker = tracker
@@ -523,7 +525,7 @@ def test_coordinator_rejects_empty_edit_prompt(monkeypatch):
         client = TestClient(app)
         response = client.post(
             "/v1/images/edits",
-            headers={"Authorization": "Bearer test-token"},
+            headers={"Authorization": f"Bearer {AUTH_TOKEN}"},
             files={"image": ("source.png", _tiny_png_bytes(), "image/png")},
             data={"prompt": "", "seed": "42"},
         )
@@ -538,7 +540,7 @@ def test_coordinator_rejects_whitespace_edit_prompt(monkeypatch):
 
     from server.app import app
 
-    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     old = app.state.edit_worker
     tracker = _TrackingReadyEditWorker()
     app.state.edit_worker = tracker
@@ -546,7 +548,7 @@ def test_coordinator_rejects_whitespace_edit_prompt(monkeypatch):
         client = TestClient(app)
         response = client.post(
             "/v1/images/edits",
-            headers={"Authorization": "Bearer test-token"},
+            headers={"Authorization": f"Bearer {AUTH_TOKEN}"},
             files={"image": ("source.png", _tiny_png_bytes(), "image/png")},
             data={"prompt": "   ", "seed": "42"},
         )
@@ -562,7 +564,7 @@ def test_coordinator_rejects_tab_newline_edit_prompt(monkeypatch):
 
     from server.app import app
 
-    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     old = app.state.edit_worker
     tracker = _TrackingReadyEditWorker()
     app.state.edit_worker = tracker
@@ -570,7 +572,7 @@ def test_coordinator_rejects_tab_newline_edit_prompt(monkeypatch):
         client = TestClient(app)
         response = client.post(
             "/v1/images/edits",
-            headers={"Authorization": "Bearer test-token"},
+            headers={"Authorization": f"Bearer {AUTH_TOKEN}"},
             files={"image": ("source.png", _tiny_png_bytes(), "image/png")},
             data={"prompt": "\t\n", "seed": "42"},
         )
@@ -586,14 +588,14 @@ def test_coordinator_rejects_whitespace_edit_prompt_before_readiness(monkeypatch
 
     from server.app import app
 
-    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "test-token")
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     old = app.state.edit_worker
     app.state.edit_worker = None
     try:
         client = TestClient(app)
         response = client.post(
             "/v1/images/edits",
-            headers={"Authorization": "Bearer test-token"},
+            headers={"Authorization": f"Bearer {AUTH_TOKEN}"},
             files={"image": ("source.png", _tiny_png_bytes(), "image/png")},
             data={"prompt": "   ", "seed": "42"},
         )
