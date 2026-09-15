@@ -171,8 +171,7 @@ class RuntimeState:
             f"seed={request['seed']} steps={request['steps']} "
             f"size={request['width']}x{request['height']} device={self.device}",
         )
-        with self.generate_lock:
-            with Heartbeat("t2i_generate"):
+        with Heartbeat("t2i_generate"):
                 images = self.pipeline.generate(
                     [request["prompt"]],
                     neg_prompts=[" "],
@@ -261,14 +260,24 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            self._write_json(400, {"detail": str(exc)})
+            return
+
+        if not self.runtime.generate_lock.acquire(blocking=False):
+            self._write_json(409, {"detail": "T2I generation is already running"})
+            return
+        try:
             result = self.runtime.generate(payload)
-        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        except ValueError as exc:
             self._write_json(400, {"detail": str(exc)})
             return
         except Exception as exc:
             log("FAIL", f"generation error: {type(exc).__name__}: {exc}")
             self._write_json(500, {"detail": f"T2I generation failed: {type(exc).__name__}: {exc}"})
             return
+        finally:
+            self.runtime.generate_lock.release()
 
         self._write_json(200, result)
 
@@ -302,6 +311,7 @@ def main() -> None:
         raise
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
+    server.daemon_threads = True
     server.runtime_state = state  # type: ignore[attr-defined]
     log("PASS", f"T2I_INTERNAL_HTTP_READY http://{args.host}:{args.port}")
     try:
