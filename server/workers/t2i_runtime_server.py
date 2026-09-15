@@ -16,6 +16,11 @@ from typing import Any
 MODEL_NAME = "mage-flow-turbo"
 REQUIRED_DEVICE = "cuda:0"
 MAX_BODY_BYTES = 64 * 1024
+# GPU-qualified frozen public acceptance profile. The internal runtime enforces
+# the exact same values the public schema accepts, as defense in depth.
+FROZEN_STEPS = 4
+FROZEN_WIDTH = 1024
+FROZEN_HEIGHT = 1024
 
 
 class Heartbeat:
@@ -66,11 +71,9 @@ def validate_generation_payload(payload: Any) -> dict[str, Any]:
         return value
 
     seed = integer("seed", 42, 0, 2**32 - 1)
-    steps = integer("steps", 4, 1, 100)
-    width = integer("width", 1024, 256, 2048)
-    height = integer("height", 1024, 256, 2048)
-    if width % 16 != 0 or height % 16 != 0:
-        raise ValueError("width and height must be multiples of 16")
+    steps = integer("steps", FROZEN_STEPS, FROZEN_STEPS, FROZEN_STEPS)
+    width = integer("width", FROZEN_WIDTH, FROZEN_WIDTH, FROZEN_WIDTH)
+    height = integer("height", FROZEN_HEIGHT, FROZEN_HEIGHT, FROZEN_HEIGHT)
 
     return {
         "prompt": prompt,
@@ -241,6 +244,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not self.runtime.ready:
             self._write_json(503, {"detail": "T2I runtime is not ready"})
+            return
+
+        if not self.headers.get("Content-Type", "").lower().startswith("application/json"):
+            self._write_json(415, {"detail": "expected Content-Type application/json"})
             return
 
         try:
