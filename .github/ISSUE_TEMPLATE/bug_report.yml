@@ -1,0 +1,55 @@
+name: Bug report / Báo lỗi
+description: Report a reproducible defect / Báo cáo lỗi có thể tái hiện
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a problem. Please remove secrets and private data from logs.
+        Cảm ơn bạn đã báo lỗi. Hãy loại bỏ secret và dữ liệu riêng tư khỏi log.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Problem summary / Tóm tắt lỗi
+      description: What happened and what did you expect? / Điều gì đã xảy ra và bạn mong đợi điều gì?
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment / Môi trường
+      options:
+        - Kaggle NVIDIA T4 x2
+        - CPU-safe local or CI
+        - Other / Khác
+    validations:
+      required: true
+  - type: input
+    id: revision
+    attributes:
+      label: Commit SHA / Commit SHA
+      placeholder: 40-character Git commit SHA if available
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps / Các bước tái hiện
+      placeholder: Commands, endpoint, request shape, and minimal input / Lệnh, endpoint, request và input tối thiểu
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / Log liên quan
+      description: Redact tokens, credentials, private URLs, and personal data. / Xóa token, credential, URL riêng tư và dữ liệu cá nhân.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks / Kiểm tra trước khi gửi
+      options:
+        - label: I searched existing issues for duplicates. / Tôi đã tìm issue trùng lặp.
+          required: true
+        - label: This is not a security vulnerability. / Đây không phải lỗ hổng bảo mật.
+          required: true
