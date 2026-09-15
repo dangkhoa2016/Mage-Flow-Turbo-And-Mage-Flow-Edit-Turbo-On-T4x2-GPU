@@ -1,3 +1,6 @@
+# Convenience requirements mirror generated from pyproject.toml.
+# The canonical dependency authority is pyproject.toml; do not edit these
+# pins independently. A CPU-safe consistency test keeps this file in sync.
 fastapi>=0.115,<1
 uvicorn[standard]>=0.30,<1
 pydantic>=2.8,<3

@@ -145,7 +145,7 @@ def test_new_shell_token_gets_0600_and_private_dir(tmp_path):
     assert _mode(token_file.parent) == "700"
 
 
-def test_reused_shell_token_permision_is_corrected_to_0600(tmp_path):
+def test_reused_shell_token_permission_is_corrected_to_0600(tmp_path):
     value, token_file = _run_token_function(tmp_path, prepopulate="existing-secret")
     assert value == "existing-secret"
     assert token_file.read_text() == "existing-secret"
