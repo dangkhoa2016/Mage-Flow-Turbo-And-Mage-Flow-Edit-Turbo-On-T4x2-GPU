@@ -1,23 +1,36 @@
 from __future__ import annotations
 
-import io
-
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
-from PIL import Image
 
 from . import __version__
 from .auth import require_bearer_token
 from .health import ServiceState
+from .images import (
+    ImageValidationError,
+    decode_validated_image,
+    validate_declared_media_type,
+)
+from .middleware import (
+    MAX_EDIT_REQUEST_BODY_BYTES,
+    MAX_T2I_REQUEST_BODY_BYTES,
+    RequestBodyLimitMiddleware,
+)
 from .schemas import EditResponse, GenerationRequest, GenerationResponse
 from .workers.edit import EditWorkerClient
 from .workers.t2i import T2IWorkerClient
 
 MAX_PUBLIC_UPLOAD_BYTES = 8 * 1024 * 1024
-ALLOWED_IMAGE_MEDIA_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
 
 app = FastAPI(
     title="Mage-Flow Turbo + Edit Turbo T4x2 REST API Demo",
     version=__version__,
+)
+app.add_middleware(
+    RequestBodyLimitMiddleware,
+    routes={
+        ("POST", "/v1/images/edits"): MAX_EDIT_REQUEST_BODY_BYTES,
+        ("POST", "/v1/images/generations"): MAX_T2I_REQUEST_BODY_BYTES,
+    },
 )
 app.state.service_state = ServiceState()
 app.state.t2i_worker = T2IWorkerClient()
@@ -88,8 +101,10 @@ async def edit(
     worker = app.state.edit_worker
     if worker is None or not getattr(worker, "ready", False):
         raise HTTPException(status_code=503, detail="Edit worker is not ready")
-    if image.content_type not in ALLOWED_IMAGE_MEDIA_TYPES:
-        raise HTTPException(status_code=415, detail="Unsupported media type")
+    try:
+        validate_declared_media_type(image.content_type)
+    except ImageValidationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     image_bytes = await image.read(MAX_PUBLIC_UPLOAD_BYTES + 1)
     if not image_bytes:
         raise HTTPException(status_code=400, detail="image file is empty")
@@ -98,28 +113,12 @@ async def edit(
             status_code=413,
             detail="image upload exceeds the public byte limit",
         )
-    if not _is_decodable_public_image(image_bytes):
-        raise HTTPException(
-            status_code=400,
-            detail="image data is not a decodable supported image",
-        )
+    try:
+        decode_validated_image(image_bytes, image.content_type)
+    except ImageValidationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     try:
         result = worker.edit(image_bytes=image_bytes, prompt=prompt, seed=seed)
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=f"Edit worker request failed: {exc}") from exc
     return EditResponse(**result)
-
-
-def _is_decodable_public_image(image_bytes: bytes) -> bool:
-    """CPU-safe decodability check at the public boundary.
-
-    Rejects malformed client uploads as 400 before they reach the internal
-    Edit worker, so malformed input is never presented as a gateway/worker
-    infrastructure failure. This does not load any model.
-    """
-    try:
-        image = Image.open(io.BytesIO(image_bytes))
-        image.load()
-    except Exception:
-        return False
-    return True
