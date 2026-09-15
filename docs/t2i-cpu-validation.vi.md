@@ -4,13 +4,13 @@
 
 Tài liệu này ghi lại phạm vi source validation CPU-safe. Nó không thay thế GPU acceptance; qualification T4 x2 riêng biệt đã hoàn tất thành công cho public candidate đã freeze.
 
-Ngày ghi nhận: 2026-09-15. Snapshot CPU-safe validation lịch sử cho commit này: các con số dưới đây phản ánh trạng thái test repository tại snapshot đó (100 tests), không phải con số closeout cuối cùng.
+Ngày ghi nhận: 2026-09-15. Snapshot publication corrected cuối cùng tại HEAD: các con số dưới đây phản ánh trạng thái test repository tại commit này (104 tests).
 
 ## Kết quả
 
 ```text
 Python compile        PASS
-Repository tests      100/100 PASS (hermetic clean-HOME)
+Repository tests      104/104 PASS (hermetic clean-HOME)
 Notebook structure    PASS
 Notebook compiles     PASS (mọi code cell)
 GPU used              NO
