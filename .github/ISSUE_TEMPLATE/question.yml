@@ -1,0 +1,27 @@
+name: Question / Câu hỏi
+description: Ask about setup, behavior, or repository usage / Hỏi về cài đặt, hành vi hoặc cách sử dụng repository
+title: "[Question]: "
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question / Câu hỏi
+      description: Be specific about what you are trying to understand or accomplish. / Nêu rõ điều bạn muốn hiểu hoặc thực hiện.
+    validations:
+      required: true
+  - type: input
+    id: revision
+    attributes:
+      label: Commit or version / Commit hoặc phiên bản
+  - type: textarea
+    id: context
+    attributes:
+      label: Context / Bối cảnh
+      description: Include environment and commands when relevant. / Thêm môi trường và lệnh nếu có liên quan.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission check / Kiểm tra trước khi gửi
+      options:
+        - label: I checked README, docs, and existing issues first. / Tôi đã kiểm tra README, docs và các issue hiện có trước.
+          required: true
