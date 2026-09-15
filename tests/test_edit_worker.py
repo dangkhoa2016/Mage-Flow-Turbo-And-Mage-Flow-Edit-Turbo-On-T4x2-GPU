@@ -16,6 +16,7 @@ from server.workers.edit import (
 from server.workers.edit_runtime_server import (
     decode_image_bytes,
     main,
+    resolve_edit_max_size,
     validate_edit_payload,
     validate_gpu_contract,
 )
@@ -32,8 +33,11 @@ class FakeResponse:
     def __exit__(self, exc_type, exc, tb):
         return False
 
-    def read(self):
-        return json.dumps(self.payload).encode()
+    def read(self, amt: int = -1):
+        data = json.dumps(self.payload).encode()
+        if amt is None or amt < 0:
+            return data
+        return data[:amt]
 
 
 def _tiny_png_bytes() -> bytes:
@@ -187,6 +191,13 @@ def test_client_edit_rejects_empty_image_bytes():
     client = EditWorkerClient(EditWorkerConfig())
     with pytest.raises(ValueError, match="non-empty"):
         client.edit(image_bytes=b"", prompt="make it sunny", seed=42)
+
+
+def test_edit_max_size_must_resolve_to_frozen_1024():
+    assert resolve_edit_max_size("1024") == 1024
+    for bad in ("0", "512", "64", "768", "", "   ", "nan"):
+        with pytest.raises(ValueError, match="frozen public profile"):
+            resolve_edit_max_size(bad)
 
 
 def test_runtime_payload_validation_defaults_and_roundtrip():

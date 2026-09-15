@@ -10,6 +10,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
+from ..config import (
+    DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    parse_timeout_seconds,
+    validate_loopback_http_url,
+)
 
 DEFAULT_INTERNAL_URL = "http://127.0.0.1:8102"
 # Public runtime-root abstraction. MAGE_FLOW_RUNTIME_ROOT overrides the default;
@@ -18,7 +23,10 @@ DEFAULT_INTERNAL_URL = "http://127.0.0.1:8102"
 DEFAULT_RUNTIME_ROOT = "/kaggle/working/mage-flow-v5-t4x2-c1-concurrency-source-20260912"
 DEFAULT_MODEL_PATH = "/kaggle/input/models/dangkhoa2016/mage-flow-community-mage-flow-edit-turbo/pytorch/default/1"
 DEFAULT_DEVICE = "cuda:1"
-DEFAULT_REQUEST_TIMEOUT_SECONDS = 3600.0
+# A 1024x1024 PNG output can exceed the error-body budget; success responses are
+# bounded separately from compact error responses.
+MAX_WORKER_RESPONSE_BYTES = 32 * 1024 * 1024
+MAX_WORKER_ERROR_RESPONSE_BYTES = 64 * 1024
 
 
 @dataclass(frozen=True)
@@ -29,16 +37,32 @@ class EditWorkerConfig:
     device: str = DEFAULT_DEVICE
     request_timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS
 
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "internal_url",
+            validate_loopback_http_url(self.internal_url, name="MAGE_FLOW_EDIT_INTERNAL_URL"),
+        )
+        object.__setattr__(
+            self,
+            "request_timeout_seconds",
+            parse_timeout_seconds(
+                self.request_timeout_seconds,
+                name="MAGE_FLOW_EDIT_REQUEST_TIMEOUT_SECONDS",
+            ),
+        )
+
     @classmethod
     def from_environment(cls, env: Mapping[str, str] | None = None) -> "EditWorkerConfig":
         values = os.environ if env is None else env
         return cls(
-            internal_url=values.get("MAGE_FLOW_EDIT_INTERNAL_URL", DEFAULT_INTERNAL_URL).rstrip("/"),
+            internal_url=values.get("MAGE_FLOW_EDIT_INTERNAL_URL", DEFAULT_INTERNAL_URL),
             runtime_root=values.get("MAGE_FLOW_RUNTIME_ROOT", DEFAULT_RUNTIME_ROOT),
             model_path=values.get("MAGE_FLOW_EDIT_MODEL_PATH", DEFAULT_MODEL_PATH),
             device=values.get("MAGE_FLOW_EDIT_DEVICE", DEFAULT_DEVICE),
-            request_timeout_seconds=float(
-                values.get("MAGE_FLOW_EDIT_REQUEST_TIMEOUT_SECONDS", DEFAULT_REQUEST_TIMEOUT_SECONDS)
+            request_timeout_seconds=values.get(
+                "MAGE_FLOW_EDIT_REQUEST_TIMEOUT_SECONDS",
+                DEFAULT_REQUEST_TIMEOUT_SECONDS,
             ),
         )
 
@@ -116,16 +140,21 @@ class EditWorkerClient:
         )
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
-                body = response.read().decode("utf-8")
+                raw = response.read(MAX_WORKER_RESPONSE_BYTES + 1)
         except urllib.error.HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")
+            raw = exc.read(MAX_WORKER_ERROR_RESPONSE_BYTES + 1)
+            body = raw.decode("utf-8", errors="replace")
             try:
                 detail = json.loads(body).get("detail", body)
             except json.JSONDecodeError:
                 detail = body
             raise RuntimeError(f"Edit worker HTTP {exc.code}: {detail}") from exc
-        except urllib.error.URLError as exc:
-            raise RuntimeError(f"Edit worker unavailable at {self.config.internal_url}: {exc.reason}") from exc
+        except (urllib.error.URLError, OSError, TimeoutError) as exc:
+            raise RuntimeError(f"Edit worker unavailable at {self.config.internal_url}: {exc}") from exc
+
+        if len(raw) > MAX_WORKER_RESPONSE_BYTES:
+            raise RuntimeError("Edit worker response exceeds the configured size bound")
+        body = raw.decode("utf-8", errors="replace")
 
         try:
             result = json.loads(body)

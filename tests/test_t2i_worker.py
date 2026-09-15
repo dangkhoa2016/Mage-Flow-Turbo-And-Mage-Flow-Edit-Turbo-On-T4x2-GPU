@@ -23,8 +23,11 @@ class FakeResponse:
     def __exit__(self, exc_type, exc, tb):
         return False
 
-    def read(self):
-        return json.dumps(self.payload).encode()
+    def read(self, amt: int = -1):
+        data = json.dumps(self.payload).encode()
+        if amt is None or amt < 0:
+            return data
+        return data[:amt]
 
 
 def test_build_worker_command_uses_validated_runtime_and_cuda0(tmp_path):
@@ -119,8 +122,31 @@ def test_runtime_payload_validation_defaults_and_alignment():
     assert payload["width"] == 1024
     assert payload["height"] == 1024
 
-    with pytest.raises(ValueError, match="multiples of 16"):
-        validate_generation_payload({"prompt": "hello", "width": 1001})
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"steps": 5},
+        {"steps": 1},
+        {"steps": 100},
+        {"width": 512, "height": 512},
+        {"width": 1024, "height": 512},
+        {"width": 2048, "height": 2048},
+        {"width": 256, "height": 256},
+    ],
+)
+def test_runtime_rejects_unfrozen_t2i_profile(overrides):
+    with pytest.raises(ValueError):
+        validate_generation_payload({"prompt": "hello", **overrides})
+
+
+def test_runtime_rejects_bool_as_int_profile_params():
+    with pytest.raises(ValueError):
+        validate_generation_payload({"prompt": "hello", "steps": True})
+    with pytest.raises(ValueError):
+        validate_generation_payload({"prompt": "hello", "width": True})
+    with pytest.raises(ValueError):
+        validate_generation_payload({"prompt": "hello", "height": True})
 
 
 def test_runtime_payload_rejects_empty_prompt_and_bool_seed():
@@ -128,6 +154,55 @@ def test_runtime_payload_rejects_empty_prompt_and_bool_seed():
         validate_generation_payload({"prompt": ""})
     with pytest.raises(ValueError, match="seed must be an integer"):
         validate_generation_payload({"prompt": "hello", "seed": True})
+
+
+def test_client_rejects_oversized_worker_response():
+    from server.workers.t2i import MAX_WORKER_RESPONSE_BYTES
+
+    class BigResponse(FakeResponse):
+        def read(self, amt: int = -1):
+            return b"x" * (MAX_WORKER_RESPONSE_BYTES + 1)
+
+    client = T2IWorkerClient(T2IWorkerConfig())
+    with patch("urllib.request.urlopen", return_value=BigResponse({"status": "completed"})):
+        with pytest.raises(RuntimeError, match="size bound"):
+            client.generate(prompt="cat", seed=42, steps=4, width=1024, height=1024)
+
+
+def test_client_transport_timeout_normalized_to_runtime_error():
+    import socket
+
+    client = T2IWorkerClient(T2IWorkerConfig())
+
+    def timeout(*args, **kwargs):
+        raise socket.timeout("timed out")
+
+    with patch("urllib.request.urlopen", side_effect=timeout):
+        with pytest.raises(RuntimeError, match="unavailable"):
+            client.generate(prompt="cat", seed=42, steps=4, width=1024, height=1024)
+
+
+def test_client_socket_oserror_normalized_to_runtime_error():
+    client = T2IWorkerClient(T2IWorkerConfig())
+
+    def refused(*args, **kwargs):
+        raise OSError("connection refused")
+
+    with patch("urllib.request.urlopen", side_effect=refused):
+        with pytest.raises(RuntimeError, match="unavailable"):
+            client.generate(prompt="cat", seed=42, steps=4, width=1024, height=1024)
+
+
+def test_client_ready_false_on_transient_transport_error():
+    import socket
+
+    client = T2IWorkerClient(T2IWorkerConfig())
+
+    def timeout(*args, **kwargs):
+        raise socket.timeout("timed out")
+
+    with patch("urllib.request.urlopen", side_effect=timeout):
+        assert client.ready is False
 
 
 class _ReadyT2IWorker:

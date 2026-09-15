@@ -29,9 +29,20 @@ MAX_BODY_BYTES = 16 * 1024 * 1024
 EDIT_STEPS = 4
 EDIT_CFG = 1.0
 
-EDIT_MAX_SIZE = int(os.environ.get("MAGE_FLOW_EDIT_MAX_SIZE", "1024"))
-if EDIT_MAX_SIZE not in (0, 64, 128, 256, 384, 448, 512, 640, 768, 896, 1024):
-    raise ValueError(f"MAGE_FLOW_EDIT_MAX_SIZE must be one of 0,64,...,1024, got {EDIT_MAX_SIZE}")
+POLICY_EDIT_MAX_SIZE = os.environ.get("MAGE_FLOW_EDIT_MAX_SIZE", "1024")
+
+
+def resolve_edit_max_size(value: str) -> int:
+    """Resolve the public Edit max-size policy to the frozen value 1024."""
+    if value != "1024":
+        raise ValueError(
+            "MAGE_FLOW_EDIT_MAX_SIZE must resolve to the frozen public profile value 1024; "
+            f"got {value!r}"
+        )
+    return int(value)
+
+
+EDIT_MAX_SIZE = resolve_edit_max_size(POLICY_EDIT_MAX_SIZE)
 PROMPT_TEMPLATE = "mage-flow-edit"
 VL_COND_LONG_EDGE = 384
 
@@ -268,6 +279,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not self.runtime.ready:
             self._write_json(503, {"detail": "Edit runtime is not ready"})
+            return
+
+        if not self.headers.get("Content-Type", "").lower().startswith("application/json"):
+            self._write_json(415, {"detail": "expected Content-Type application/json"})
             return
 
         try:
