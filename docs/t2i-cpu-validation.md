@@ -4,13 +4,13 @@
 
 This document records the CPU-safe source-validation scope. It does not substitute for GPU acceptance; the separate T4 x2 qualification has already completed successfully for the frozen public candidate.
 
-Record date: 2026-09-15. Historical CPU-safe validation snapshot for this commit: the counts below reflect the repository test state at this snapshot (100 tests), not the final closeout counts.
+Record date: 2026-09-15. Final corrected publication snapshot at HEAD: the counts below reflect the repository test state at this commit (104 tests).
 
 ## Result
 
 ```text
 Python compile        PASS
-Repository tests      100/100 PASS (clean-HOME hermetic)
+Repository tests      104/104 PASS (clean-HOME hermetic)
 Notebook structure    PASS
 Notebook compiles     PASS (every code cell)
 GPU used              NO
