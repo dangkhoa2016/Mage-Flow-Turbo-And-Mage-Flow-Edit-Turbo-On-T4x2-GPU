@@ -5,12 +5,22 @@ import base64
 import io
 import json
 import os
+import sys
 import threading
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+
+# The standalone runtime is executed with ``python server/workers/...`` from the
+# project root; expose the project package so the shared decoded-image contract
+# in ``server.images`` is the single source of truth for both boundaries.
+_PACKAGE_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(_PACKAGE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PACKAGE_ROOT))
+
+from server.images import ImageValidationError, decode_validated_worker_image  # noqa: E402
 
 
 MODEL_NAME = "mage-flow-edit-turbo"
@@ -63,17 +73,13 @@ def image_to_data_url(image) -> str:
 
 
 def decode_image_bytes(image_bytes: bytes):
-    """Validate raw image bytes and return a decoded RGB PIL image."""
-    from PIL import Image
-
+    """Validate raw image bytes against the decoded-image resource contract."""
     if not image_bytes:
         raise ValueError("image payload must not be empty")
     try:
-        image = Image.open(io.BytesIO(image_bytes))
-        image.load()
-    except Exception as exc:
-        raise ValueError(f"invalid image payload: {type(exc).__name__}: {exc}") from exc
-    return image.convert("RGB")
+        return decode_validated_worker_image(image_bytes)
+    except ImageValidationError as exc:
+        raise ValueError(f"invalid image payload: {exc}") from exc
 
 
 def validate_edit_payload(payload: Any) -> dict[str, Any]:
