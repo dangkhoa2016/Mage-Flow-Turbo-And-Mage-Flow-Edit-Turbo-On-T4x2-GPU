@@ -5,6 +5,7 @@ import io
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from PIL import Image
 
+from . import __version__
 from .auth import require_bearer_token
 from .health import ServiceState
 from .schemas import EditResponse, GenerationRequest, GenerationResponse
@@ -16,7 +17,7 @@ ALLOWED_IMAGE_MEDIA_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp
 
 app = FastAPI(
     title="Mage-Flow-Turbo and Mage-Flow-Edit-Turbo on T4x2 GPU",
-    version="0.1.0-dev-dual-worker",
+    version=__version__,
 )
 app.state.service_state = ServiceState()
 app.state.t2i_worker = T2IWorkerClient()
