@@ -1,0 +1,43 @@
+name: Feature request / Đề xuất tính năng
+description: Propose a scoped improvement / Đề xuất cải tiến có phạm vi rõ ràng
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case / Vấn đề hoặc use case
+      description: What concrete limitation are you trying to solve? / Bạn muốn giải quyết giới hạn cụ thể nào?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change / Thay đổi đề xuất
+      description: Describe the smallest useful change. / Mô tả thay đổi hữu ích nhỏ nhất.
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Primary scope / Phạm vi chính
+      options:
+        - T2I worker
+        - Edit worker
+        - REST coordinator / API
+        - Kaggle notebook / orchestration
+        - CI / repository automation
+        - Documentation / publication
+        - Other / Khác
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered / Phương án khác đã cân nhắc
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Scope acknowledgement / Xác nhận phạm vi
+      options:
+        - label: I understand that CPU-safe CI does not replace required T4 x2 GPU qualification. / Tôi hiểu CPU-safe CI không thay thế GPU qualification T4 x2 khi cần.
+          required: true
