@@ -274,7 +274,7 @@ class _CoordinatorServer:
 
 def _coordinator_payload():
     return {
-        "project": "mage-flow-t4x2-production-rest-api-demo",
+        "project": "Mage-Flow-Turbo-And-Mage-Flow-Edit-Turbo-On-T4x2-GPU",
         "runtime_target": "Kaggle NVIDIA T4 x2",
         "t2i": {"model": "mage-flow-turbo", "device": "cuda:0", "ready": True, "single_flight": True},
         "edit": {"model": "mage-flow-edit-turbo", "device": "cuda:1", "ready": True, "single_flight": True},

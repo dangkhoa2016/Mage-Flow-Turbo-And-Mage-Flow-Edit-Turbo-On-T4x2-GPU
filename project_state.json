@@ -1,5 +1,5 @@
 {
-  "project_phase": "gpu_candidate_pass_pending_publication",
+  "project_stage": "github_published_pending_kaggle_publication",
   "runtime": {
     "accelerator": "Kaggle NVIDIA T4 x2",
     "t2i_device": "cuda:0",
@@ -9,7 +9,7 @@
   },
   "public_notebook": "notebooks/mage-flow-t4x2-production-rest-api-demo.ipynb",
   "license_status": "MIT",
-  "github_repository_created": false,
+  "github_repository_created": true,
   "model_integration_complete": true,
   "t2i_integration": {
     "source_implemented": true,
