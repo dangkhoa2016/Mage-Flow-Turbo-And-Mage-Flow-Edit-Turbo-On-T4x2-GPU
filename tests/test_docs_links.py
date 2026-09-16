@@ -33,7 +33,25 @@ def test_docs_links_validator_does_not_fail_on_remote_urls(tmp_path):
         "# Hướng dẫn\n\n[English](guide.md)\n",
         encoding="utf-8",
     )
-    result = _run("--root", str(root), cwd=str(root))
+    result = _run("--root", str(root))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "[PASS] DOCS_LINKS_VALID" in result.stdout
+
+
+def test_docs_links_validator_root_is_independent_of_cwd(tmp_path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "guide.md").write_text(
+        "# Guide\n\n[Tiếng Việt](guide.vi.md)\n\n[Remote reference](https://example.com/)\n",
+        encoding="utf-8",
+    )
+    (root / "guide.vi.md").write_text(
+        "# Hướng dẫn\n\n[English](guide.md)\n",
+        encoding="utf-8",
+    )
+    unrelated_cwd = tmp_path / "caller"
+    unrelated_cwd.mkdir()
+    result = _run("--root", str(root), cwd=str(unrelated_cwd))
     assert result.returncode == 0, result.stdout + result.stderr
     assert "[PASS] DOCS_LINKS_VALID" in result.stdout
 
