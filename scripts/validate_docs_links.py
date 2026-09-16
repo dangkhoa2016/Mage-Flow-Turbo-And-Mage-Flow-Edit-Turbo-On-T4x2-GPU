@@ -75,7 +75,7 @@ def resolve_target(root: Path, doc: str, target: str) -> Path | None:
     path = Path(decoded)
     if path.is_absolute():
         return root / str(path).lstrip("/")
-    return (Path(doc).parent / path).resolve()
+    return (root / Path(doc).parent / path).resolve()
 
 
 def validate_tree(root: Path) -> list[str]:
