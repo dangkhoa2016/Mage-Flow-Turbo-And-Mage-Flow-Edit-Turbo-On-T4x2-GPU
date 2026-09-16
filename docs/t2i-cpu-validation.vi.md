@@ -2,15 +2,15 @@
 
 > 🌐 Language / Ngôn ngữ: [English](t2i-cpu-validation.md) | **Tiếng Việt**
 
-Tài liệu này ghi lại phạm vi source validation CPU-safe. Nó không thay thế GPU acceptance; qualification T4 x2 riêng biệt đã hoàn tất thành công cho public candidate đã freeze.
+Tài liệu này ghi lại phạm vi source validation CPU-safe. Nó không thay thế GPU acceptance; qualification T4 x2 riêng biệt đã hoàn tất thành công cho public acceptance surface đã freeze.
 
-Ngày ghi nhận: 2026-09-16. Snapshot closeout v11-hardening tại HEAD: các con số dưới đây phản ánh trạng thái validation repository tại commit này (331 tests).
+Ngày ghi nhận: 2026-09-16. Snapshot closeout validation tại HEAD: các con số dưới đây phản ánh trạng thái validation repository tại commit này (474 tests).
 
 ## Kết quả
 
 ```text
 Python compile        PASS
-Repository tests      331/331 PASS (hermetic clean-HOME)
+Repository tests      474/474 PASS (hermetic clean-HOME)
 Ruff lint/format      PASS
 mypy server+scripts   PASS
 ShellCheck            PASS (scripts/*.sh)
