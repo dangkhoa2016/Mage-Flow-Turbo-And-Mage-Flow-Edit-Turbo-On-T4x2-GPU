@@ -7,9 +7,13 @@
 #
 # Behaviour:
 #   * reads the PID file with the strict shared guard (process_identity.py);
-#   * refuses to signal a PID whose /proc identity does not match the service;
-#   * sends SIGTERM, waits a bounded interval, then re-verifies identity before
-#     escalating to SIGKILL (never kills a new process that reused the PID);
+#   * delegates the whole stop to process_identity.py `stop-process`, which
+#     opens a pidfd for the PID, verifies identity while the pidfd is held,
+#     sends SIGTERM via the pidfd, and only escalates to pidfd SIGKILL after a
+#     bounded wait and a re-verification (never kills a reused PID);
+#   * if the pidfd primitives are unavailable, fails closed with
+#     `[HOLD] PIDFD_SIGNAL_AUTHORITY=UNAVAILABLE_FAIL_CLOSED` instead of
+#     silently falling back to numeric-PID signaling;
 #   * only removes the PID file once the verified process has actually exited.
 set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -54,89 +58,21 @@ if [[ -n "$PORT" ]]; then
     --name MAGE_FLOW_STOP_PROCESS_PORT --value "$PORT"
 fi
 
-identity_check() {
-  local extra=()
-  [[ -n "$PORT" ]] && extra+=( --port "$PORT" )
-  [[ -n "$DEVICE" ]] && extra+=( --device "$DEVICE" )
-  [[ -n "$MODEL_PATH" ]] && extra+=( --model-path "$MODEL_PATH" )
-  python scripts/process_identity.py check \
-    --pid-file "$PID_FILE" --kind "$KIND" --project-root "$CWD_ROOT" \
-    "${extra[@]}" >/dev/null 2>&1
-}
-
-read_pid() {
-  python scripts/process_identity.py read-pid --pid-file "$PID_FILE" 2>/dev/null || true
-}
-
-alive() {
-  # A zombie keeps /proc/<pid> briefly; its cmdline is empty, so treat it as
-  # already exited rather than "still running" (and never escalate against it).
-  [[ -d "/proc/$1" ]] && [[ -s "/proc/$1/cmdline" ]]
-}
-
-pid="$(read_pid)"
-if [[ -z "$pid" ]]; then
-  echo "[INFO] PID file does not hold a valid process id; cleaning stale file without killing"
-  rm -f "$PID_FILE"
-  exit 0
-fi
-
-if ! identity_check; then
-  echo "[WARN] pid=$pid does not match the expected $KIND identity; removing stale pid file without killing"
-  rm -f "$PID_FILE"
-  exit 0
-fi
-
-echo "[INFO] stopping $KIND pid=$pid with SIGTERM"
-kill -- "$pid" 2>/dev/null || true
-
-elapsed=0
-while (( elapsed < TERM_GRACE_MAX )); do
-  if ! alive "$pid"; then
-    echo "[PASS] ${KIND}_STOPPED pid=$pid"
-    rm -f "$PID_FILE"
-    exit 0
-  fi
-  # Identity may have changed if the PID was reused while we waited; in that
-  # case the new process is NOT ours and must not be escalated against.
-  if ! identity_check; then
-    echo "[WARN] pid=$pid identity changed during wait; refusing to escalate against a reused PID"
-    rm -f "$PID_FILE"
-    exit 0
-  fi
-  sleep "$TERM_GRACE_STEP"
-  elapsed=$((elapsed + TERM_GRACE_STEP))
-done
-
-# Only escalate when the process is still the verified service.
-if alive "$pid" && identity_check; then
-  echo "[WARN] pid=$pid still alive after SIGTERM grace; escalating to SIGKILL"
-  kill -9 -- "$pid" 2>/dev/null || true
-else
-  echo "[WARN] pid=$pid exited during TERM grace"
-fi
-
-elapsed=0
-while (( elapsed < KILL_GRACE_MAX )); do
-  if ! alive "$pid"; then
-    echo "[PASS] ${KIND}_STOPPED pid=$pid"
-    rm -f "$PID_FILE"
-    exit 0
-  fi
-  sleep "$TERM_GRACE_STEP"
-  elapsed=$((elapsed + TERM_GRACE_STEP))
-done
-
-if alive "$pid" && identity_check; then
-  echo "[FAIL] $KIND pid=$pid is still alive after SIGKILL and still matches identity; keeping pid file for diagnosis"
+if ! python scripts/process_identity.py pidfd-support >/dev/null 2>&1; then
+  echo '[HOLD] PIDFD_SIGNAL_AUTHORITY=UNAVAILABLE_FAIL_CLOSED' >&2
   exit 1
 fi
 
-if alive "$pid"; then
-  echo "[WARN] pid=$pid is alive but no longer matches the expected identity; removing stale pid file without killing"
-  rm -f "$PID_FILE"
-  exit 0
-fi
-echo "[PASS] ${KIND}_STOPPED pid=$pid"
-rm -f "$PID_FILE"
-exit 0
+local_args=()
+[[ -n "$PORT" ]] && local_args+=( --port "$PORT" )
+[[ -n "$DEVICE" ]] && local_args+=( --device "$DEVICE" )
+[[ -n "$MODEL_PATH" ]] && local_args+=( --model-path "$MODEL_PATH" )
+
+python scripts/process_identity.py stop-process \
+  --pid-file "$PID_FILE" \
+  --kind "$KIND" \
+  --project-root "$CWD_ROOT" \
+  "${local_args[@]}" \
+  --term-grace "$TERM_GRACE_MAX" \
+  --kill-grace "$KILL_GRACE_MAX" \
+  --step "$TERM_GRACE_STEP"

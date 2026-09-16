@@ -12,8 +12,8 @@ fi
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
-RUNTIME_ROOT="${MAGE_FLOW_RUNTIME_ROOT:-/kaggle/working/mage-flow-v5-t4x2-c1-concurrency-source-20260912}"
-MODEL_PATH="${MAGE_FLOW_T2I_MODEL_PATH:-/kaggle/input/models/dangkhoa2016/mage-flow-community-mage-flow-turbo/pytorch/default/1}"
+RUNTIME_ROOT="${MAGE_FLOW_RUNTIME_ROOT:-/kaggle/working/mage-flow-t4x2-runtime}"
+MODEL_PATH="$(python scripts/runtime_config.py resolve-model-path --kind t2i)"
 DEVICE="${MAGE_FLOW_T2I_DEVICE:-cuda:0}"
 RUNTIME_PYTHON="$RUNTIME_ROOT/.venv/bin/python"
 PORT="${MAGE_FLOW_T2I_INTERNAL_PORT:-8101}"

@@ -15,8 +15,8 @@ MAGE_SOURCE="$RUNTIME_ROOT/vendor/Mage"
 # PUBLIC_SOURCE_AUTHORITY: vendor checkout must resolve to this exact commit.
 EXPECTED_MAGE_COMMIT="76bec2bb3818863f470de7e867c2dc7f1d0bfd83"
 
-T2I_MODEL="${MAGE_FLOW_T2I_MODEL_PATH:-/kaggle/input/models/dangkhoa2016/mage-flow-community-mage-flow-turbo/pytorch/default/1}"
-EDIT_MODEL="${MAGE_FLOW_EDIT_MODEL_PATH:-/kaggle/input/models/dangkhoa2016/mage-flow-community-mage-flow-edit-turbo/pytorch/default/1}"
+T2I_MODEL="$(python scripts/runtime_config.py resolve-model-path --kind t2i)"
+EDIT_MODEL="$(python scripts/runtime_config.py resolve-model-path --kind edit)"
 EDIT_SOURCE="${MAGE_FLOW_EDIT_SOURCE_IMAGE:-$EDIT_MODEL/assets/dog.jpg}"
 
 # Single authoritative configuration model: ports are read once and everything

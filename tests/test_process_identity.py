@@ -1,5 +1,7 @@
 import http.server
 import json
+import os
+import signal
 import subprocess
 import sys
 import threading
@@ -7,10 +9,14 @@ from pathlib import Path
 
 import pytest
 from scripts.process_identity import (
+    PIDFD_SUPPORTED,
     ProcessIdentityError,
+    _fdinfo_pid,
     argv_matches_signature,
     check_process,
+    open_pidfd,
     parse_strict_pid,
+    pidfd_wait_exit,
     read_pid_file,
     verify_coordinator_authenticated,
     verify_worker_health,
@@ -342,3 +348,124 @@ def test_cli_rejects_non_numeric_pid(tmp_path):
     )
     assert result.returncode != 0
     assert "[FAIL]" in result.stdout
+
+
+# ---------------- pidfd race-safe signal authority ----------------
+def _spawn_sigterm_ignoring(argv0: str, args: list[str], cwd: str):
+    code = "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(300)"
+    cmd = ["bash", "-c", f"exec -a {argv0} {sys.executable} -c '{code}' {' '.join(args)}", "_"]
+    proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        proc.wait(timeout=3)
+        raise AssertionError("fixture exited early")
+    except subprocess.TimeoutExpired:
+        return proc
+
+
+def _run_stop_process(pid_file: Path, *, term_grace: int = 20, kill_grace: int = 10, model_path: str | None = None):
+    cmd = [
+        sys.executable,
+        str(ROOT / "scripts" / "process_identity.py"),
+        "stop-process",
+        "--pid-file",
+        str(pid_file),
+        "--kind",
+        "t2i_worker",
+        "--project-root",
+        str(ROOT),
+        "--port",
+        "8101",
+        "--device",
+        "cuda:0",
+        "--term-grace",
+        str(term_grace),
+        "--kill-grace",
+        str(kill_grace),
+        "--step",
+        "1",
+    ]
+    if model_path:
+        cmd += ["--model-path", model_path]
+    return subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=60)
+
+
+def test_pidfd_support_available_on_linux():
+    assert PIDFD_SUPPORTED is True
+
+
+def test_pidfd_fdinfo_references_expected_pid():
+    proc = _spawn_fixture(
+        "server/workers/t2i_runtime_server.py",
+        ["--host", "127.0.0.1", "--port", "8101", "--device", "cuda:0", "--model-path", "/models/t2i"],
+        str(ROOT),
+    )
+    try:
+        fd = open_pidfd(proc.pid)
+        try:
+            assert _fdinfo_pid(fd) == proc.pid
+        finally:
+            os.close(fd)
+    finally:
+        proc.kill()
+
+
+def test_pidfd_reused_pid_cannot_be_signalled():
+    # Once the tracked task has exited AND been reaped, the pidfd no longer
+    # resolves to any task (ESRCH), so a subsequent pidfd signal can never reach
+    # a different process that happened to reuse the numeric PID.
+    proc = _spawn_fixture(
+        "server/workers/t2i_runtime_server.py",
+        ["--host", "127.0.0.1", "--port", "8101", "--device", "cuda:0", "--model-path", "/models/t2i"],
+        str(ROOT),
+    )
+    fd = open_pidfd(proc.pid)
+    try:
+        assert _fdinfo_pid(fd) == proc.pid
+        proc.kill()
+        proc.wait(timeout=15)
+        with pytest.raises(ProcessLookupError):
+            signal.pidfd_send_signal(fd, signal.SIGTERM)
+    finally:
+        os.close(fd)
+
+
+def test_pidfd_zombie_observed_as_exited():
+    # A process that was killed but not reaped is a zombie: it cannot be
+    # signalled/escalated against, and the pidfd wait must not report a
+    # lingering "timeout" that could suggest escalation.
+    proc = _spawn_fixture(
+        "server/workers/t2i_runtime_server.py",
+        ["--host", "127.0.0.1", "--port", "8101", "--device", "cuda:0", "--model-path", "/models/t2i"],
+        str(ROOT),
+    )
+    try:
+        proc.kill()
+        fd = open_pidfd(proc.pid)
+        try:
+            assert pidfd_wait_exit(fd, proc.pid, 5, 1) != "timeout"
+        finally:
+            os.close(fd)
+        proc.wait(timeout=15)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+
+
+def test_stop_process_escalates_to_sigkill_when_term_ignored(tmp_path):
+    proc = _spawn_sigterm_ignoring(
+        "server/workers/t2i_runtime_server.py",
+        ["--host", "127.0.0.1", "--port", "8101", "--device", "cuda:0", "--model-path", "/models/t2i"],
+        str(ROOT),
+    )
+    pid_file = tmp_path / "t2i.pid"
+    pid_file.write_text(str(proc.pid))
+    try:
+        result = _run_stop_process(pid_file, term_grace=1, kill_grace=5, model_path="/models/t2i")
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "[PASS] t2i_worker_STOPPED" in result.stdout
+        assert "escalating to pidfd SIGKILL" in result.stdout
+        assert proc.wait(timeout=15) == -signal.SIGKILL
+        assert not pid_file.exists()
+    finally:
+        if proc.poll() is None:
+            proc.kill()

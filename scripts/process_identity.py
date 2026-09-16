@@ -27,7 +27,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import select
+import signal
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -35,6 +38,8 @@ from pathlib import Path
 KIND_T2I = "t2i_worker"
 KIND_EDIT = "edit_worker"
 KIND_COORD = "coordinator"
+
+PIDFD_SUPPORTED = hasattr(os, "pidfd_open") and hasattr(signal, "pidfd_send_signal") and hasattr(select, "poll")
 
 # Runtime workers bind IPv4 loopback only; a process with any other --host value
 # (including the IPv6 loopback ``::1``) cannot match the runtime identity.
@@ -196,6 +201,182 @@ def _urlopen_json(url: str, *, headers: dict[str, str] | None = None, timeout: f
         raise ProcessIdentityError(f"cannot reach {url}: {exc}") from exc
 
 
+# ---------------- pidfd race-safe signal authority ----------------
+def _require_pidfd() -> None:
+    if not PIDFD_SUPPORTED:
+        raise ProcessIdentityError("pidfd primitives unavailable; fail closed (no numeric-PID fallback)")
+
+
+def _fdinfo_pid(fd: int) -> int:
+    """Return the PID currently referenced by a pidfd, from ``/proc/self/fdinfo``."""
+    try:
+        with open(f"/proc/self/fdinfo/{fd}", encoding="utf-8") as handle:
+            for line in handle:
+                key, _, value = line.partition(":")
+                if key == "Pid":
+                    return int(value.strip())
+    except (OSError, ValueError) as exc:
+        raise ProcessIdentityError(f"cannot read pidfd fdinfo: {exc}") from exc
+    raise ProcessIdentityError("pidfd fdinfo has no Pid record")
+
+
+def open_pidfd(pid: int) -> int:
+    """Open a pidfd for ``pid``; the handle pins the process even if the PID is reused."""
+    _require_pidfd()
+    try:
+        return os.pidfd_open(pid)
+    except OSError as exc:
+        raise ProcessIdentityError(f"cannot open pidfd for pid {pid}: {exc}") from exc
+
+
+def _proc_state_is_zombie_or_gone(pid: int) -> bool:
+    """Return True when /proc reports the task as exited (zombie) or missing.
+
+    A task that has not been reaped yet is still present in the process table as
+    a zombie; such a task cannot be signalled or escalated against. Falling back
+    to this /proc observation while holding the pidfd keeps the original
+    guarantee intact: the pidfd itself never resolves to a reused PID.
+    """
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+    except OSError:
+        return True
+    try:
+        state = stat[stat.rfind(")") + 2 :].split()[0]
+    except IndexError:
+        return True
+    return state == "Z"
+
+
+def pidfd_wait_exit(fd: int, pid: int, timeout_seconds: float, step_seconds: float) -> str:
+    """Wait for the pidfd target to exit; return ``"exited"``, ``"gone"`` or ``"timeout"``."""
+    poller = select.poll()
+    poller.register(fd, select.POLLIN)
+    deadline = time.monotonic() + float(timeout_seconds)
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return "timeout"
+        events = poller.poll(max(1, int(min(step_seconds, remaining) * 1000)))
+        if events:
+            return "exited"
+        if _proc_state_is_zombie_or_gone(pid):
+            return "gone"
+
+
+def pidfd_send(fd: int, sig: int) -> None:
+    """Send a signal through the pidfd; a gone target is a non-event."""
+    try:
+        signal.pidfd_send_signal(fd, sig)
+    except ProcessLookupError:
+        return
+    except OSError as exc:
+        raise ProcessIdentityError(f"pidfd signal {sig} failed: {exc}") from exc
+
+
+def _remove_pid_file(path: str | os.PathLike[str]) -> None:
+    Path(path).unlink(missing_ok=True)
+
+
+def cmd_stop_process(args: argparse.Namespace) -> int:
+    pid: int | None = None
+    try:
+        pid = read_pid_file(args.pid_file)
+    except ProcessIdentityError as exc:
+        print(
+            f"[INFO] PID file does not hold a valid process id; cleaning stale file without killing ({exc})",
+            flush=True,
+        )
+        _remove_pid_file(args.pid_file)
+        return 0
+
+    if not os.path.isdir(f"/proc/{pid}"):
+        print(f"[INFO] pid={pid} is not running; removing stale pid file without killing", flush=True)
+        _remove_pid_file(args.pid_file)
+        return 0
+
+    try:
+        fd = open_pidfd(pid)
+    except ProcessIdentityError as exc:
+        print(f"[FAIL] {exc}", flush=True)
+        return 1
+    try:
+        try:
+            current = _fdinfo_pid(fd)
+        except ProcessIdentityError as exc:
+            print(f"[FAIL] {exc}", flush=True)
+            return 1
+        if current != pid:
+            print(
+                f"[WARN] pid={pid} pidfd resolves to {current}; removing stale pid file without killing",
+                flush=True,
+            )
+            _remove_pid_file(args.pid_file)
+            return 0
+        check_process(
+            pid,
+            args.kind,
+            project_root=args.project_root,
+            port=args.port,
+            device=args.device,
+            model_path=args.model_path,
+        )
+    except ProcessIdentityError as exc:
+        print(
+            f"[WARN] pid={pid} does not match the expected {args.kind} identity; "
+            f"removing stale pid file without killing ({exc})",
+            flush=True,
+        )
+        _remove_pid_file(args.pid_file)
+        return 0
+
+    print(f"[INFO] stopping {args.kind} pid={pid} with pidfd SIGTERM", flush=True)
+    try:
+        pidfd_send(fd, signal.SIGTERM)
+        term_status = pidfd_wait_exit(fd, pid, args.term_grace, args.step)
+    except ProcessIdentityError as exc:
+        print(f"[FAIL] {exc}", flush=True)
+        return 1
+    if term_status != "timeout":
+        print(f"[PASS] {args.kind}_STOPPED pid={pid}", flush=True)
+        _remove_pid_file(args.pid_file)
+        return 0
+
+    try:
+        if _fdinfo_pid(fd) != pid:
+            raise ProcessIdentityError("pidfd no longer references the expected pid")
+        check_process(
+            pid,
+            args.kind,
+            project_root=args.project_root,
+            port=args.port,
+            device=args.device,
+            model_path=args.model_path,
+        )
+    except ProcessIdentityError as exc:
+        print(f"[WARN] pid={pid} identity changed during stop; not escalating ({exc})", flush=True)
+        _remove_pid_file(args.pid_file)
+        return 0
+
+    print(f"[WARN] pid={pid} still alive after SIGTERM grace; escalating to pidfd SIGKILL", flush=True)
+    try:
+        pidfd_send(fd, signal.SIGKILL)
+        kill_status = pidfd_wait_exit(fd, pid, args.kill_grace, args.step)
+    except ProcessIdentityError as exc:
+        print(f"[FAIL] {exc}", flush=True)
+        return 1
+    if kill_status != "timeout":
+        print(f"[PASS] {args.kind}_STOPPED pid={pid}", flush=True)
+        _remove_pid_file(args.pid_file)
+        return 0
+    print(
+        f"[FAIL] {args.kind} pid={pid} is still alive after SIGKILL and still matches identity; "
+        "keeping pid file for diagnosis",
+        flush=True,
+    )
+    return 1
+
+
 def verify_worker_health(
     url: str,
     pid: int,
@@ -295,7 +476,32 @@ def main(argv: list[str] | None = None) -> int:
     check_parser = subparsers.add_parser("check", help="validate process identity before reuse or signal")
     _add_check_args(check_parser)
 
+    subparsers.add_parser("pidfd-support", help="fail-closed check for the pidfd signal authority availability")
+
+    stop_parser = subparsers.add_parser(
+        "stop-process", help="identity-verified pidfd graceful stop of a single service"
+    )
+    stop_parser.add_argument("--pid-file", required=True)
+    stop_parser.add_argument("--kind", required=True, choices=[KIND_T2I, KIND_EDIT, KIND_COORD])
+    stop_parser.add_argument("--project-root", default=None)
+    stop_parser.add_argument("--port", type=int, default=None)
+    stop_parser.add_argument("--device", default=None)
+    stop_parser.add_argument("--model-path", default=None)
+    stop_parser.add_argument("--term-grace", type=int, default=20, help="SIGTERM grace seconds")
+    stop_parser.add_argument("--kill-grace", type=int, default=10, help="SIGKILL grace seconds")
+    stop_parser.add_argument("--step", type=int, default=1, help="wait loop granularity seconds")
+
     args = parser.parse_args(argv)
+
+    if args.command == "pidfd-support":
+        if PIDFD_SUPPORTED:
+            print("[PASS] PIDFD_SIGNAL_AUTHORITY", flush=True)
+            return 0
+        print("[HOLD] PIDFD_SIGNAL_AUTHORITY=UNAVAILABLE_FAIL_CLOSED", flush=True)
+        return 1
+
+    if args.command == "stop-process":
+        return cmd_stop_process(args)
 
     if args.command == "read-pid":
         try:
