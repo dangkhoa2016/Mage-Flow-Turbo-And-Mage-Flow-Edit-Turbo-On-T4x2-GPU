@@ -80,9 +80,14 @@ def test_missing_source_fails(tmp_path):
 
 def test_orchestrator_uses_fail_closed_gate():
     script = (ROOT / "scripts" / "run_public_candidate.sh").read_text(encoding="utf-8")
+    start_script = (ROOT / "scripts" / "start.sh").read_text(encoding="utf-8")
     assert 'if [[ "$ACTUAL_COMMIT" != "$EXPECTED_MAGE_COMMIT" ]]; then' in script
     assert "found ${ACTUAL_COMMIT:-<unresolved>}" in script
     assert '[[ -n "$ACTUAL_COMMIT" &&' not in script
+    assert 'validate-token --value="$MAGE_FLOW_API_TOKEN"' in script
+    assert 'validate-token --value "$MAGE_FLOW_API_TOKEN"' not in script
+    assert 'validate-token --value="$MAGE_FLOW_API_TOKEN"' in start_script
+    assert 'validate-token --value "$MAGE_FLOW_API_TOKEN"' not in start_script
 
 
 def test_expected_mage_commit_is_immutable_project_constant():
@@ -145,9 +150,10 @@ def test_new_shell_token_gets_0600_and_private_dir(tmp_path):
 
 
 def test_reused_shell_token_permission_is_corrected_to_0600(tmp_path):
-    value, token_file = _run_token_function(tmp_path, prepopulate="existing-secret")
-    assert value == "existing-secret"
-    assert token_file.read_text() == "existing-secret"
+    token = "-existing-secret-0123456789abcdef0123456789abcdef"
+    value, token_file = _run_token_function(tmp_path, prepopulate=token)
+    assert value == token
+    assert token_file.read_text() == token
     assert _mode(token_file) == "600"
 
 

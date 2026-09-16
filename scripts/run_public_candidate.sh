@@ -30,6 +30,9 @@ REST_URL="http://127.0.0.1:${REST_PORT}"
 export MAGE_FLOW_T2I_INTERNAL_URL="$T2I_URL"
 export MAGE_FLOW_EDIT_INTERNAL_URL="$EDIT_URL"
 
+python scripts/runtime_config.py validate-ports \
+  --rest "$REST_PORT" --t2i "$T2I_PORT" --edit "$EDIT_PORT"
+
 RUNTIME_DIR=".runtime"
 ACCEPT_DIR="$RUNTIME_DIR/acceptance"
 TOKEN_FILE="$RUNTIME_DIR/api_token"
@@ -95,6 +98,7 @@ prepare_api_token() {
   python scripts/token_store.py prepare-dir "$runtime_dir"
   MAGE_FLOW_API_TOKEN="$(python scripts/token_store.py ensure-token "$token_file")"
   export MAGE_FLOW_API_TOKEN
+  python scripts/runtime_config.py validate-token --value="$MAGE_FLOW_API_TOKEN"
   info "api_token=<temporary session token; not printed>"
 }
 

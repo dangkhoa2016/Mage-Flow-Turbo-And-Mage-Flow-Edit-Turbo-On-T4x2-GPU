@@ -6,21 +6,16 @@ import os
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from server.token_contract import MIN_PUBLIC_TOKEN_LENGTH, validate_public_token_value  # noqa: F401
+
 TOKEN_ENV = "MAGE_FLOW_API_TOKEN"
-MIN_PUBLIC_TOKEN_LENGTH = 32
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
-def validate_public_token(token: str) -> str:
+def validate_public_token(token: object) -> str:
     """Enforce the public start contract for configured tokens (fail closed)."""
-    if len(token) < MIN_PUBLIC_TOKEN_LENGTH:
-        raise ValueError(f"API token must be at least {MIN_PUBLIC_TOKEN_LENGTH} characters")
-    if not token.strip():
-        raise ValueError("API token must not be whitespace-only")
-    if "\n" in token or "\x00" in token:
-        raise ValueError("API token must not contain newlines or NUL bytes")
-    return token
+    return validate_public_token_value(token)
 
 
 def require_bearer_token(
