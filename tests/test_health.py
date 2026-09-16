@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import io
 from typing import ClassVar
 
@@ -70,7 +71,7 @@ class _ReadyT2IWorker:
             "width": kwargs["width"],
             "height": kwargs["height"],
             "elapsed_seconds": 1.0,
-            "output": "data:image/png;base64,abc",
+            "output": _png_data_url(),
         }
 
 
@@ -122,6 +123,10 @@ def _tiny_png_bytes() -> bytes:
     buffer = io.BytesIO()
     Image.new("RGB", (8, 8), (10, 200, 90)).save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+def _png_data_url() -> str:
+    return "data:image/png;base64," + base64.b64encode(_tiny_png_bytes()).decode("ascii")
 
 
 class _CountingUpload:
@@ -218,7 +223,7 @@ def test_edit_valid_within_limit_reaches_worker():
                 "device": "cuda:1",
                 "seed": seed,
                 "elapsed_seconds": 0.5,
-                "output": "data:image/png;base64,abc",
+                "output": _png_data_url(),
             }
 
     worker = _GoodEditWorker()

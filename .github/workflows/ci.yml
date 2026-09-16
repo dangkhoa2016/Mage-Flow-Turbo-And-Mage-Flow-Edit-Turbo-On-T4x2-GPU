@@ -43,7 +43,7 @@ jobs:
       - name: Install project and test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[test]"
+          python -m pip install ".[test]"
 
       - name: Run CPU-safe test suite
         run: python -m pytest -q
@@ -90,7 +90,7 @@ jobs:
       - name: Install project, test and quality dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[test,quality]"
+          python -m pip install ".[test,quality]"
 
       - name: Ruff lint
         run: ruff check .
@@ -144,3 +144,30 @@ jobs:
 
       - name: Validate installed dependencies
         run: python -m pip check
+
+  git-integrity:
+    name: Git history and whitespace integrity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository with full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: git diff --check
+        run: git diff --check
+
+      - name: git show --check on HEAD
+        run: git show --check --oneline --decorate HEAD >/dev/null
+
+      - name: git show --check across all history
+        run: |
+          for c in $(git rev-list --reverse HEAD); do
+            git show --check --format=fuller --no-ext-diff "$c" >/dev/null || exit 1
+          done
+
+      - name: git fsck
+        run: git fsck --full --no-reflogs

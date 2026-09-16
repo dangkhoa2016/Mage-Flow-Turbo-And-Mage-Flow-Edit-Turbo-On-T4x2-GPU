@@ -8,8 +8,12 @@ generic; diagnostics are logged server-side only.
 
 from __future__ import annotations
 
+import base64
+import io
 import math
 from typing import Any
+
+from PIL import Image
 
 MODEL_T2I = "mage-flow-turbo"
 MODEL_EDIT = "mage-flow-edit-turbo"
@@ -18,6 +22,7 @@ DEVICE_EDIT = "cuda:1"
 T2I_WIDTH = 1024
 T2I_HEIGHT = 1024
 OUTPUT_DATA_URL_PREFIX = "data:image/png;base64,"
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 SEED_MAX = 2**32 - 1
 
 
@@ -68,8 +73,36 @@ def _check_common_fields(value: dict, worker: str, model: str, device: str) -> N
         and len(output) > len(OUTPUT_DATA_URL_PREFIX),
         worker,
         "output",
-        (output[:32] + "..." if isinstance(output, str) and len(output) > 32 else output),
+        "expected a PNG data URL" if isinstance(output, str) else type(output).__name__,
     )
+    assert isinstance(output, str)
+    _check_output_png(output, worker)
+
+
+def _check_output_png(data_url: str, worker: str) -> None:
+    """Prove the data-URL payload is strict Base64 and valid PNG content.
+
+    The error diagnostics never embed the decoded bytes or the payload, so no
+    worker output can leak into the public error surface.
+    """
+    payload = data_url[len(OUTPUT_DATA_URL_PREFIX) :]
+    try:
+        decoded = base64.b64decode(payload, validate=True)
+    except (ValueError, TypeError):
+        raise WorkerResponseViolation(
+            f"{worker} worker violated the response contract: output payload is not strict Base64"
+        ) from None
+    if not decoded:
+        raise WorkerResponseViolation(f"{worker} worker violated the response contract: output payload is empty")
+    if not decoded.startswith(PNG_SIGNATURE):
+        raise WorkerResponseViolation(f"{worker} worker violated the response contract: output is not a PNG image")
+    try:
+        with Image.open(io.BytesIO(decoded)) as image:
+            image.verify()
+    except Exception:
+        raise WorkerResponseViolation(
+            f"{worker} worker violated the response contract: output is not a decodable PNG image"
+        ) from None
 
 
 def validate_t2i_worker_response(value: Any) -> dict[str, Any]:
