@@ -23,9 +23,18 @@ Trước khi mở pull request, hãy chạy:
 python -m pytest -q
 python scripts/validate_bilingual_docs.py
 python scripts/validate_notebook.py
+python scripts/validate_docs_links.py
+python scripts/validate_repository.py
 python -m pip check
 python -m compileall -q server scripts examples
+bash -n scripts/*.sh
+shellcheck scripts/*.sh
+ruff check .
+ruff format --check .
+mypy server scripts
 ```
+
+CI chạy cùng các cổng này cộng thêm các bước build-artifact và dependency-audit trên mỗi push/PR.
 
 Các bước kiểm tra an toàn CPU không được load model Mage và không được âm thầm fallback sang CPU đối với workflow tuyên bố chạy GPU T4 x2.
 

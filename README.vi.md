@@ -65,14 +65,24 @@ Dừng các service bằng:
 
 ## Xác minh
 
-Validation CPU-safe không load model và không cần GPU:
+Validation CPU-safe không load model và không cần GPU. Toàn bộ các cổng release-gate được thực thi cục bộ và trên CI:
 
 ```bash
 python -m pytest -q
 python scripts/validate_bilingual_docs.py
 python scripts/validate_notebook.py
+python scripts/validate_docs_links.py
+python scripts/validate_repository.py
+python scripts/validate_build_artifacts.py
 python -m pip check
 python -m compileall -q server scripts examples
+bash -n scripts/*.sh
+shellcheck scripts/*.sh
+ruff check .
+ruff format --check .
+mypy server scripts
+python -m build
+pip-audit -r requirements.txt
 ```
 
 Validation ở mức repository bao gồm bộ pytest CPU-safe PASS và:
@@ -80,12 +90,15 @@ Validation ở mức repository bao gồm bộ pytest CPU-safe PASS và:
 ```text
 [PASS] BILINGUAL_DOCUMENTATION_PAIRING_VALID
 [PASS] NOTEBOOK_STRUCTURE_VALID
+[PASS] DOCS_LINKS_VALID
+[PASS] REPOSITORY_HYGIENE_VALID
+[PASS] BUILD_ARTIFACTS_VALID
 ```
 
 ## Trạng thái publication
 
 - GPU public-candidate qualification: hoàn tất
-- CPU-safe validation: 104/104 PASS (hermetic clean-HOME, 2026-09-15 corrective run)
+- CPU-safe validation: 331/331 PASS (hermetic clean-HOME, 2026-09-16 v11-hardening closeout)
 - Source documentation song ngữ: đã có
 - Public notebook structural validation: hoàn tất
 - Public notebook live `Run All`: đang chờ

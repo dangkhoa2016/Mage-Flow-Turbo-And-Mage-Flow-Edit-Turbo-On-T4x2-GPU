@@ -65,27 +65,40 @@ Stop the services with:
 
 ## Validation
 
-CPU-safe validation does not load the models or require a GPU:
+CPU-safe validation does not load the models or require a GPU. The full release-gate set is enforced locally and in CI:
 
 ```bash
 python -m pytest -q
 python scripts/validate_bilingual_docs.py
 python scripts/validate_notebook.py
+python scripts/validate_docs_links.py
+python scripts/validate_repository.py
+python scripts/validate_build_artifacts.py
 python -m pip check
 python -m compileall -q server scripts examples
+bash -n scripts/*.sh
+shellcheck scripts/*.sh
+ruff check .
+ruff format --check .
+mypy server scripts
+python -m build
+pip-audit -r requirements.txt
 ```
 
-Expected repository-level validation includes a passing CPU-safe pytest suite and:
+Expected repository-level validation includes a passing CPU-safe pytest suite plus:
 
 ```text
 [PASS] BILINGUAL_DOCUMENTATION_PAIRING_VALID
 [PASS] NOTEBOOK_STRUCTURE_VALID
+[PASS] DOCS_LINKS_VALID
+[PASS] REPOSITORY_HYGIENE_VALID
+[PASS] BUILD_ARTIFACTS_VALID
 ```
 
 ## Publication state
 
 - GPU public-candidate qualification: complete
-- CPU-safe validation: 104/104 PASS (clean-HOME hermetic, 2026-09-15 corrective run)
+- CPU-safe validation: 331/331 PASS (clean-HOME hermetic, 2026-09-16 v11-hardening closeout)
 - Bilingual source documentation: included
 - Public notebook structural validation: complete
 - Public notebook live `Run All`: pending

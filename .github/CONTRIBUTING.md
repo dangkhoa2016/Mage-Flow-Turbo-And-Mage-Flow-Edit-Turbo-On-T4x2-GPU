@@ -23,9 +23,18 @@ Before opening a pull request, run:
 python -m pytest -q
 python scripts/validate_bilingual_docs.py
 python scripts/validate_notebook.py
+python scripts/validate_docs_links.py
+python scripts/validate_repository.py
 python -m pip check
 python -m compileall -q server scripts examples
+bash -n scripts/*.sh
+shellcheck scripts/*.sh
+ruff check .
+ruff format --check .
+mypy server scripts
 ```
+
+CI runs these same gates plus the build-artifact and dependency-audit steps on every push/PR.
 
 CPU-safe validation must not load the Mage models and must not silently fall back to CPU for workflows that claim T4 x2 GPU execution.
 
