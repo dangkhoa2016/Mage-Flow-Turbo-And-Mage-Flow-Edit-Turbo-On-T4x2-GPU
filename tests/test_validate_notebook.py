@@ -98,7 +98,7 @@ def test_validator_rejects_forbidden_label(mutated_notebook):
 
 def test_validator_rejects_missing_bilingual_markdown(mutated_notebook):
     nb = json.loads(mutated_notebook.read_text())
-    for i, c in enumerate(nb["cells"]):
+    for _i, c in enumerate(nb["cells"]):
         if c["cell_type"] == "markdown" and "**English**" in "".join(c["source"]):
             c["source"] = [c["source"][0].replace("**Tiếng Việt**", "**Tieng Viet**")]
     mutated_notebook.write_text(json.dumps(nb))
@@ -244,9 +244,7 @@ def test_validator_rejects_operational_assert_gates(mutated_notebook):
 def test_validator_requires_heartbeat_helper(mutated_notebook):
     nb = json.loads(mutated_notebook.read_text())
     cell = _find_code_cell(nb, "def heartbeat(")
-    cell["source"] = [
-        line.replace("[HEARTBEAT]", "[BEAT]") for line in cell["source"]
-    ]
+    cell["source"] = [line.replace("[HEARTBEAT]", "[BEAT]") for line in cell["source"]]
     mutated_notebook.write_text(json.dumps(nb))
     result = _run_validator(mutated_notebook)
     assert result.returncode != 0

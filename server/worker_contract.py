@@ -27,9 +27,7 @@ class WorkerResponseViolation(RuntimeError):
 
 def _require(condition: bool, worker: str, field: str, value: Any) -> None:
     if not condition:
-        raise WorkerResponseViolation(
-            f"{worker} worker violated the response contract: {field}={value!r}"
-        )
+        raise WorkerResponseViolation(f"{worker} worker violated the response contract: {field}={value!r}")
 
 
 def _check_common_fields(value: dict, worker: str, model: str, device: str) -> None:
@@ -40,7 +38,7 @@ def _check_common_fields(value: dict, worker: str, model: str, device: str) -> N
 
     request_id = value.get("id")
     _require(
-        isinstance(request_id, str) and request_id,
+        bool(isinstance(request_id, str) and request_id),
         worker,
         "id",
         request_id,

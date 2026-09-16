@@ -1,4 +1,5 @@
 import os
+
 import requests
 
 token = os.environ["MAGE_FLOW_API_TOKEN"]

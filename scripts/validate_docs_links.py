@@ -14,6 +14,7 @@ nondeterministic and must not be a required CI gate.
 Usage:
     python scripts/validate_docs_links.py [--root DIR]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -41,11 +42,7 @@ def markdown_files(root: Path) -> list[str]:
             return sorted(line for line in git_md.splitlines() if line.strip())
         except (subprocess.CalledProcessError, FileNotFoundError):
             pass
-    return sorted(
-        str(p.relative_to(root)).replace("\\", "/")
-        for p in root.rglob("*.md")
-        if ".git" not in p.parts
-    )
+    return sorted(str(p.relative_to(root)).replace("\\", "/") for p in root.rglob("*.md") if ".git" not in p.parts)
 
 
 def counterpart(path: str) -> str:
@@ -67,9 +64,7 @@ def is_external(target: str) -> bool:
         return True
     if target.startswith("#"):
         return True
-    if target.startswith(_TEMPLATE_PREFIXES):
-        return True
-    return False
+    return bool(target.startswith(_TEMPLATE_PREFIXES))
 
 
 def resolve_target(root: Path, doc: str, target: str) -> Path | None:

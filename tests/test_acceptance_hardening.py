@@ -1,10 +1,8 @@
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 
 import pytest
-
 from scripts.acceptance import LiveAcceptance
 
 VALID_TOKEN = "kaggle-demo-test-token-0123456789abcdef0123456789abcdef"

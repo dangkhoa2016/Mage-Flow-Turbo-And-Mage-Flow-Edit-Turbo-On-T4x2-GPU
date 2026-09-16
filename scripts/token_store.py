@@ -82,9 +82,7 @@ def enforce_token_file(path: str | os.PathLike[str]) -> None:
         raise TokenStoreError(f"token file {token_path} is not a regular file (mode {stat.S_IFMT(st.st_mode):o})")
     _real_owner_ok(token_path)
     if st.st_nlink != 1:
-        raise TokenStoreError(
-            f"token file {token_path} has link count {st.st_nlink} (surprising extra hardlinks)"
-        )
+        raise TokenStoreError(f"token file {token_path} has link count {st.st_nlink} (surprising extra hardlinks)")
     try:
         os.chmod(token_path, DEFAULT_TOKEN_MODE)
     except OSError as exc:

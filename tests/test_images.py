@@ -4,7 +4,6 @@ import io
 
 import pytest
 from PIL import Image
-
 from server.images import (
     ALLOWED_IMAGE_FORMATS,
     ALLOWED_IMAGE_MEDIA_TYPES,
@@ -26,7 +25,7 @@ def _image_bytes(size=(8, 8), fmt="PNG", **save_kwargs) -> bytes:
 
 def test_declared_media_type_allowlist_and_format_map_agree():
     assert ALLOWED_IMAGE_FORMATS == ("PNG", "JPEG", "WEBP")
-    assert ALLOWED_IMAGE_MEDIA_TYPES == {"image/png", "image/jpeg", "image/jpg", "image/webp"}
+    assert {"image/png", "image/jpeg", "image/jpg", "image/webp"} == ALLOWED_IMAGE_MEDIA_TYPES
     assert set(MEDIA_TYPE_TO_FORMAT) == ALLOWED_IMAGE_MEDIA_TYPES
     assert set(MEDIA_TYPE_TO_FORMAT.values()) == set(ALLOWED_IMAGE_FORMATS)
     assert MEDIA_TYPE_TO_FORMAT["image/jpeg"] == MEDIA_TYPE_TO_FORMAT["image/jpg"] == "JPEG"

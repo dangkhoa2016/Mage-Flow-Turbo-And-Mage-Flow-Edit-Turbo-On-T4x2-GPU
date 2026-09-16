@@ -6,9 +6,10 @@ import os
 import subprocess
 import urllib.error
 import urllib.request
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
+from typing import IO, Any
 
 from ..config import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
@@ -21,7 +22,7 @@ DEFAULT_INTERNAL_URL = "http://127.0.0.1:8102"
 # Public runtime-root abstraction. MAGE_FLOW_RUNTIME_ROOT overrides the default;
 # the default below is the internal Kaggle path used by the already-qualified demo,
 # NOT a new runtime qualification.
-DEFAULT_RUNTIME_ROOT = "/kaggle/working/mage-flow-v5-t4x2-c1-concurrency-source-20260912"
+DEFAULT_RUNTIME_ROOT = "/kaggle/working/mage-flow-t4x2-runtime"
 DEFAULT_MODEL_PATH = "/kaggle/input/models/dangkhoa2016/mage-flow-community-mage-flow-edit-turbo/pytorch/default/1"
 DEFAULT_DEVICE = "cuda:1"
 # A 1024x1024 PNG output can exceed the error-body budget; success responses are
@@ -54,16 +55,19 @@ class EditWorkerConfig:
         )
 
     @classmethod
-    def from_environment(cls, env: Mapping[str, str] | None = None) -> "EditWorkerConfig":
+    def from_environment(cls, env: Mapping[str, str] | None = None) -> EditWorkerConfig:
         values = os.environ if env is None else env
         return cls(
             internal_url=values.get("MAGE_FLOW_EDIT_INTERNAL_URL", DEFAULT_INTERNAL_URL),
             runtime_root=values.get("MAGE_FLOW_RUNTIME_ROOT", DEFAULT_RUNTIME_ROOT),
             model_path=values.get("MAGE_FLOW_EDIT_MODEL_PATH", DEFAULT_MODEL_PATH),
             device=values.get("MAGE_FLOW_EDIT_DEVICE", DEFAULT_DEVICE),
-            request_timeout_seconds=values.get(
-                "MAGE_FLOW_EDIT_REQUEST_TIMEOUT_SECONDS",
-                DEFAULT_REQUEST_TIMEOUT_SECONDS,
+            request_timeout_seconds=parse_timeout_seconds(
+                values.get(
+                    "MAGE_FLOW_EDIT_REQUEST_TIMEOUT_SECONDS",
+                    DEFAULT_REQUEST_TIMEOUT_SECONDS,
+                ),
+                name="MAGE_FLOW_EDIT_REQUEST_TIMEOUT_SECONDS",
             ),
         )
 
@@ -195,8 +199,8 @@ def start_edit_worker_process(
     *,
     project_root: str | Path,
     config: EditWorkerConfig | None = None,
-    stdout=None,
-    stderr=None,
+    stdout: IO[Any] | None = None,
+    stderr: IO[Any] | None = None,
 ) -> subprocess.Popen:
     """Start the worker subprocess; readiness is checked separately by the caller."""
 

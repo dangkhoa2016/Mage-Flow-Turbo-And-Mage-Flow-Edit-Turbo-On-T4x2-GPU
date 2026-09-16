@@ -33,6 +33,15 @@ def test_repository_validator_rejects_tracked_generated_paths(tmp_path):
     assert "tracked" in result.stdout
 
 
+def test_repository_validator_rejects_missing_final_newline(tmp_path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "README.md").write_text("no trailing newline", encoding="utf-8")
+    result = _run("--root", str(root))
+    assert result.returncode != 0
+    assert "final newline" in result.stdout
+
+
 def test_repository_validator_rejects_project_state_drift(tmp_path):
     root = tmp_path / "repo"
     for directory in (
@@ -51,9 +60,10 @@ def test_repository_validator_rejects_project_state_drift(tmp_path):
         ".gitignore",
     ):
         (root / file).write_text("", encoding="utf-8")
-    (root / "notebooks/mage-flow-turbo-and-mage-flow-edit-turbo-on-t4x2-gpu.ipynb").write_text("{}")
+    (root / "notebooks/mage-flow-turbo-and-mage-flow-edit-turbo-on-t4x2-gpu.ipynb").write_text("{}\n")
     (root / "server/app.py").write_text("")
     (root / "scripts/run_public_candidate.sh").write_text("")
+    (root / "scripts/run_public_candidate.sh").chmod(0o755)
     (root / "tests/test_acceptance.py").write_text("")
     (root / ".github/workflows/ci.yml").write_text("")
     (root / ".github/SECURITY.md").write_text("")
@@ -77,15 +87,12 @@ def test_repository_validator_rejects_project_state_drift(tmp_path):
         "github_ci_configured": True,
         "github_community_metadata_configured": True,
     }
-    (root / "project_state.json").write_text(
-        __import__("json").dumps(project_state), encoding="utf-8"
-    )
+    state_file = root / "project_state.json"
+    state_file.write_text(__import__("json").dumps(project_state) + "\n", encoding="utf-8")
     good = _run("--root", str(root))
     assert good.returncode == 0, good.stdout + good.stderr
     project_state["runtime"]["cpu_fallback"] = True
-    (root / "project_state.json").write_text(
-        __import__("json").dumps(project_state), encoding="utf-8"
-    )
+    state_file.write_text(__import__("json").dumps(project_state) + "\n", encoding="utf-8")
     bad = _run("--root", str(root))
     assert bad.returncode != 0
     assert "cpu_fallback" in bad.stdout
