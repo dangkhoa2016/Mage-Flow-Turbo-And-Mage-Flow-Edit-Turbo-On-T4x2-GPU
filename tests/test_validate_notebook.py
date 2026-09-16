@@ -179,3 +179,75 @@ def test_notebook_token_mode_new_and_reused_is_enforced(tmp_path):
     assert reused == value
     assert oct(token.stat().st_mode & 0o777) == "0o600"
     assert oct(token.parent.stat().st_mode & 0o777) == "0o700"
+
+
+def _find_code_cell(nb, needle):
+    for c in nb["cells"]:
+        if c["cell_type"] == "code" and needle in "".join(c["source"]):
+            return c
+    raise AssertionError(f"code cell containing {needle!r} not found")
+
+
+def _drop_cell(nb, index):
+    nb["cells"].pop(index)
+
+
+def test_validator_enforces_exact_cell_topology(mutated_notebook):
+    nb = json.loads(mutated_notebook.read_text())
+    _drop_cell(nb, 10)  # remove a code cell -> 38 cells
+    mutated_notebook.write_text(json.dumps(nb))
+    result = _run_validator(mutated_notebook)
+    assert result.returncode != 0
+    assert "stage sequence mismatch" in result.stdout
+
+
+def test_validator_requires_clean_execution_state(mutated_notebook):
+    nb = json.loads(mutated_notebook.read_text())
+    cell = _find_code_cell(nb, "def run_cmd(")
+    cell["execution_count"] = 7
+    cell["outputs"] = [{"output_type": "stream", "text": ["stale"]}]
+    mutated_notebook.write_text(json.dumps(nb))
+    result = _run_validator(mutated_notebook)
+    assert result.returncode != 0
+    assert "execution_count" in result.stdout
+
+
+def test_validator_requires_metadata_authority(mutated_notebook):
+    nb = json.loads(mutated_notebook.read_text())
+    nb["metadata"].pop("runtime_target", None)
+    mutated_notebook.write_text(json.dumps(nb))
+    result = _run_validator(mutated_notebook)
+    assert result.returncode != 0
+    assert "runtime_target" in result.stdout
+
+
+def test_validator_restricts_torch_to_preflight_cell(mutated_notebook):
+    nb = json.loads(mutated_notebook.read_text())
+    cell = _find_code_cell(nb, "import platform")
+    cell["source"] = ["import torch\n"] + cell["source"]
+    mutated_notebook.write_text(json.dumps(nb))
+    result = _run_validator(mutated_notebook)
+    assert result.returncode != 0
+    assert "torch imported outside" in result.stdout
+
+
+def test_validator_rejects_operational_assert_gates(mutated_notebook):
+    nb = json.loads(mutated_notebook.read_text())
+    cell = _find_code_cell(nb, "def heartbeat(")
+    cell["source"] = ["assert 1 == 1\n"] + cell["source"]
+    mutated_notebook.write_text(json.dumps(nb))
+    result = _run_validator(mutated_notebook)
+    assert result.returncode != 0
+    assert "operational 'assert'" in result.stdout
+
+
+def test_validator_requires_heartbeat_helper(mutated_notebook):
+    nb = json.loads(mutated_notebook.read_text())
+    cell = _find_code_cell(nb, "def heartbeat(")
+    cell["source"] = [
+        line.replace("[HEARTBEAT]", "[BEAT]") for line in cell["source"]
+    ]
+    mutated_notebook.write_text(json.dumps(nb))
+    result = _run_validator(mutated_notebook)
+    assert result.returncode != 0
+    assert "HEARTBEAT" in result.stdout
