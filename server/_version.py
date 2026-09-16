@@ -4,4 +4,4 @@ Single source of truth consumed by setuptools (via ``[tool.setuptools.dynamic]``
 ``attr``), the FastAPI application, and any version-reporting tooling.
 """
 
-__version__ = "0.1.0.dev0"
+__version__ = "1.0.0rc1"

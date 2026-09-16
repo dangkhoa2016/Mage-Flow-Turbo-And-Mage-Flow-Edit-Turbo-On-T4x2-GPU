@@ -51,7 +51,7 @@ EXPECTED_SCRIPT_TOKENS = {
     KIND_COORD: "server.app:app",
 }
 
-PROJECT_NAME = "mage-flow-t4x2-production-rest-api-demo"
+PROJECT_NAME = "mage-flow-turbo-dual-t4-rest-api"
 
 MAX_PID_DIGITS = 10
 

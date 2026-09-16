@@ -93,7 +93,7 @@ def info() -> dict:
     t2i_worker = app.state.t2i_worker
     edit_worker = app.state.edit_worker
     return {
-        "project": "mage-flow-t4x2-production-rest-api-demo",
+        "project": "mage-flow-turbo-dual-t4-rest-api",
         "runtime_target": "Kaggle NVIDIA T4 x2",
         "t2i": {
             "model": "mage-flow-turbo",

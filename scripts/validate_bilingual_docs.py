@@ -85,7 +85,7 @@ def validate_tree() -> list[str]:
             continue
         text = (ROOT / path).read_text(encoding="utf-8")
         banner = expected_banner(path)
-        first_lines = "\n".join(text.splitlines()[:8])
+        first_lines = "\n".join(text.splitlines()[:12])
         if banner not in first_lines:
             errors.append(f"missing/incorrect language switcher in {path}: expected {banner!r}")
         errors.extend(validate_parity(path, text, pair))

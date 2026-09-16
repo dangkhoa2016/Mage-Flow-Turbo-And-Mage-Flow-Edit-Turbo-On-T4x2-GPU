@@ -1,5 +1,11 @@
 # Mage-Flow Turbo + Edit Turbo — Kaggle T4x2 REST API Demo
 
+[![CI](https://github.com/dangkhoa2016/Mage-Flow-Turbo-Dual-T4-REST-API/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/dangkhoa2016/Mage-Flow-Turbo-Dual-T4-REST-API/actions/workflows/ci.yml)
+![Version](https://img.shields.io/badge/version-1.0.0rc1-orange)
+![Python](https://img.shields.io/badge/python-3.10--3.14-blue)
+![License](https://img.shields.io/github/license/dangkhoa2016/Mage-Flow-Turbo-Dual-T4-REST-API)
+![Runtime](https://img.shields.io/badge/runtime-Kaggle%20NVIDIA%20T4%C3%972-20BEFF?logo=kaggle&logoColor=white)
+
 > 🌐 Language / Ngôn ngữ: **English** | [Tiếng Việt](README.vi.md)
 
 Production-style public REST API demo for Mage-Flow Turbo and Mage-Flow Edit Turbo on Kaggle NVIDIA T4 x2.
@@ -98,15 +104,19 @@ Expected repository-level validation includes a passing CPU-safe pytest suite pl
 ## Publication state
 
 - GPU public-candidate qualification: complete
-- CPU-safe validation: 474/474 PASS (clean-HOME hermetic, 2026-09-16 v11-hardening closeout)
+- CPU-safe validation: 475/475 PASS (clean-HOME hermetic, 2026-09-16 v11-hardening closeout)
 - Bilingual source documentation: included
 - Public notebook structural validation: complete
 - Public notebook live `Run All`: pending
 - Public saved version verification: pending
 - Open-source license: MIT
+- GitHub repository: published
 - GitHub Actions CI and community metadata: configured
-- Official GitHub repository creation: pending
+- Python distribution: mage-flow-turbo-dual-t4-rest-api
+- Python package version: 1.0.0rc1
 - `v1.0.0`: not yet released
+
+`v1.0.0` remains gated on a fresh public Kaggle `Run All` and saved-version verification; the Kaggle publication steps are not claimed yet.
 
 ## Documentation
 
