@@ -10,14 +10,25 @@ cd "$PROJECT_ROOT"
 RUNTIME_ROOT="${MAGE_FLOW_RUNTIME_ROOT:-/kaggle/working/mage-flow-v5-t4x2-c1-concurrency-source-20260912}"
 RUNTIME_PYTHON="$RUNTIME_ROOT/.venv/bin/python"
 MAGE_SOURCE="$RUNTIME_ROOT/vendor/Mage"
-EXPECTED_MAGE_COMMIT="${EXPECTED_MAGE_COMMIT:-76bec2bb3818863f470de7e867c2dc7f1d0bfd83}"
+
+# The public-candidate expected Mage commit is an immutable project constant.
+# PUBLIC_SOURCE_AUTHORITY: vendor checkout must resolve to this exact commit.
+EXPECTED_MAGE_COMMIT="76bec2bb3818863f470de7e867c2dc7f1d0bfd83"
+
 T2I_MODEL="${MAGE_FLOW_T2I_MODEL_PATH:-/kaggle/input/models/dangkhoa2016/mage-flow-community-mage-flow-turbo/pytorch/default/1}"
 EDIT_MODEL="${MAGE_FLOW_EDIT_MODEL_PATH:-/kaggle/input/models/dangkhoa2016/mage-flow-community-mage-flow-edit-turbo/pytorch/default/1}"
 EDIT_SOURCE="${MAGE_FLOW_EDIT_SOURCE_IMAGE:-$EDIT_MODEL/assets/dog.jpg}"
 
-T2I_URL="http://127.0.0.1:8101"
-EDIT_URL="http://127.0.0.1:8102"
-REST_URL="http://127.0.0.1:8090"
+# Single authoritative configuration model: ports are read once and everything
+# else is derived from them, so startup and health/routing cannot diverge.
+T2I_PORT="${MAGE_FLOW_T2I_INTERNAL_PORT:-8101}"
+EDIT_PORT="${MAGE_FLOW_EDIT_INTERNAL_PORT:-8102}"
+REST_PORT="${MAGE_FLOW_REST_PORT:-8090}"
+T2I_URL="http://127.0.0.1:${T2I_PORT}"
+EDIT_URL="http://127.0.0.1:${EDIT_PORT}"
+REST_URL="http://127.0.0.1:${REST_PORT}"
+export MAGE_FLOW_T2I_INTERNAL_URL="$T2I_URL"
+export MAGE_FLOW_EDIT_INTERNAL_URL="$EDIT_URL"
 
 RUNTIME_DIR=".runtime"
 ACCEPT_DIR="$RUNTIME_DIR/acceptance"
@@ -27,31 +38,39 @@ bar() { printf '%s\n' '━━━━━━━━━━━━━━━━━━━
 fail() { echo "[FAIL] $*" >&2; exit 1; }
 info() { echo "[INFO] $*"; }
 
-mkdir -p "$RUNTIME_DIR" "$ACCEPT_DIR"
-chmod 700 "$RUNTIME_DIR" 2>/dev/null || true
-
-bar
-echo '[STAGE] Mage-Flow T4 x2 public candidate orchestrator'
-bar
-
-is_endpoint_healthy() {
-  local url="$1" model="$2" device="$3" model_path="$4"
-  python scripts/service_health.py "$url" "$model" "$device" "$model_path" >/dev/null 2>&1
+# ---------------- transactional startup behaviour ----------------
+# Track processes started by THIS invocation so a failed run cleans up only
+# those, never healthy pre-existing (reused) processes.
+declare -a NEW_SERVICES=()
+record_new_service() {
+  local pid_file="$1" stop_script="$2"
+  NEW_SERVICES+=("$pid_file|$stop_script")
 }
-
-stop_stale_if_unhealthy() {
-  local pid_file="$1" url="$2" model="$3" device="$4" model_path="$5" stop_script="$6"
-  if [[ -f "$pid_file" ]] && kill -0 "$(cat "$pid_file")" 2>/dev/null; then
-    if ! is_endpoint_healthy "$url" "$model" "$device" "$model_path"; then
-      echo "[WARN] stale/misconfigured worker pid=$(cat "$pid_file") is not healthy on $url; stopping it"
+cleanup_new_services() {
+  local entry pid_file stop_script
+  for entry in "${NEW_SERVICES[@]:-}"; do
+    [[ -n "$entry" ]] || continue
+    pid_file="${entry%%|*}"
+    stop_script="${entry##*|}"
+    if [[ -f "$pid_file" ]]; then
+      echo "[INFO] transactional cleanup: stopping newly started process in $pid_file"
       bash "$stop_script" || true
     fi
-  else
-    rm -f "$pid_file"
-  fi
+  done
 }
+on_exit() {
+  local rc=$?
+  if (( rc == 0 )); then
+    return 0
+  fi
+  echo "[INFO] orchestrator terminated with rc=$rc; leaving pre-existing reused processes resident"
+  cleanup_new_services
+}
+trap on_exit EXIT
 
 # ---------------- path / commit / token validation ----------------
+python scripts/token_store.py prepare-dir "$RUNTIME_DIR" "$ACCEPT_DIR"
+
 [[ -d "$RUNTIME_ROOT" ]] || fail "validated runtime root missing: $RUNTIME_ROOT"
 [[ -d "$MAGE_SOURCE" ]] || fail "Mage source missing: $MAGE_SOURCE"
 [[ -x "$RUNTIME_PYTHON" ]] || fail "validated runtime Python missing: $RUNTIME_PYTHON"
@@ -68,26 +87,15 @@ if [[ "$ACTUAL_COMMIT" != "$EXPECTED_MAGE_COMMIT" ]]; then
 fi
 info "mage_commit=$ACTUAL_COMMIT"
 
-# Persistent per-session API token; never printed.
+# Persistent per-session API token; fail-closed permissions, never printed.
 prepare_api_token() {
   local token_file="$1"
   local runtime_dir
   runtime_dir="$(dirname "$token_file")"
-  mkdir -p "$runtime_dir"
-  chmod 700 "$runtime_dir" 2>/dev/null || true
-  if [[ -s "$token_file" ]]; then
-    chmod 600 "$token_file" 2>/dev/null || true
-    MAGE_FLOW_API_TOKEN="$(cat "$token_file")"
-    export MAGE_FLOW_API_TOKEN
-    info "api_token=<reused persisted temporary token>"
-    return 0
-  fi
-  MAGE_FLOW_API_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+  python scripts/token_store.py prepare-dir "$runtime_dir"
+  MAGE_FLOW_API_TOKEN="$(python scripts/token_store.py ensure-token "$token_file")"
   export MAGE_FLOW_API_TOKEN
-  umask 077
-  printf '%s' "$MAGE_FLOW_API_TOKEN" > "$token_file"
-  chmod 600 "$token_file" 2>/dev/null || true
-  info "api_token=<generated temporary token>"
+  info "api_token=<temporary session token; not printed>"
 }
 
 prepare_api_token "$TOKEN_FILE"
@@ -126,23 +134,36 @@ else
 fi
 
 # ---------------- stale PID / port detection ----------------
-stop_stale_if_unhealthy "$RUNTIME_DIR/t2i.pid" "$T2I_URL" "mage-flow-turbo" "cuda:0" "$T2I_MODEL" "scripts/stop_t2i.sh"
-stop_stale_if_unhealthy "$RUNTIME_DIR/edit.pid" "$EDIT_URL" "mage-flow-edit-turbo" "cuda:1" "$EDIT_MODEL" "scripts/stop_edit.sh"
-if [[ -f "$RUNTIME_DIR/server.pid" ]] && kill -0 "$(cat "$RUNTIME_DIR/server.pid")" 2>/dev/null; then
-  if ! python - "$REST_URL" <<'PY' >/dev/null 2>&1
-import json, sys, urllib.request
-try:
-    with urllib.request.urlopen(sys.argv[1] + "/health", timeout=2) as r:
-        json.load(r)
-except Exception:
-    sys.exit(1)
-PY
-  then
-    echo "[WARN] stale coordinator pid=$(cat "$RUNTIME_DIR/server.pid") is not healthy; stopping it"
-    bash scripts/stop.sh || true
+is_endpoint_healthy() {
+  local url="$1" model="$2" device="$3" model_path="$4"
+  python scripts/service_health.py "$url" "$model" "$device" "$model_path" >/dev/null 2>&1
+}
+
+stop_stale_if_unhealthy() {
+  local pid_file="$1" url="$2" model="$3" device="$4" model_path="$5" stop_script="$6" kind="$7" port="$8"
+  if [[ ! -f "$pid_file" ]]; then
+    return 0
   fi
-else
-  rm -f "$RUNTIME_DIR/server.pid"
+  if python scripts/process_identity.py check \
+       --pid-file "$pid_file" --kind "$kind" --project-root "$PROJECT_ROOT" --port "$port" >/dev/null 2>&1; then
+    if ! is_endpoint_healthy "$url" "$model" "$device" "$model_path"; then
+      echo "[WARN] stale/misconfigured worker pid=$(cat "$pid_file" 2>/dev/null || true) is not healthy on $url; stopping it"
+      bash "$stop_script" || true
+    fi
+  else
+    echo "[WARN] pid file $pid_file does not match process identity; removing stale pid file without killing"
+    rm -f "$pid_file"
+  fi
+}
+
+stop_stale_if_unhealthy "$RUNTIME_DIR/t2i.pid" "$T2I_URL" "mage-flow-turbo" "cuda:0" "$T2I_MODEL" "scripts/stop_t2i.sh" "t2i_worker" "$T2I_PORT"
+stop_stale_if_unhealthy "$RUNTIME_DIR/edit.pid" "$EDIT_URL" "mage-flow-edit-turbo" "cuda:1" "$EDIT_MODEL" "scripts/stop_edit.sh" "edit_worker" "$EDIT_PORT"
+
+if [[ -f "$RUNTIME_DIR/server.pid" ]] && ! python scripts/process_identity.py check \
+     --pid-file "$RUNTIME_DIR/server.pid" --kind coordinator \
+     --project-root "$PROJECT_ROOT" --port "$REST_PORT" >/dev/null 2>&1; then
+  echo "[WARN] stale coordinator pid=$(cat "$RUNTIME_DIR/server.pid" 2>/dev/null || true) failed identity check; stopping it"
+  bash scripts/stop.sh || true
 fi
 
 # ---------------- workers (idempotent: reuse healthy resident processes) ----------------
@@ -155,6 +176,7 @@ if [[ -n "$T2I_BEFORE_PID" && "$T2I_BEFORE_PID" == "$T2I_AFTER_PID" ]]; then
 else
   info "T2I worker loaded once (new pid=$T2I_AFTER_PID)"
   T2I_LOADED=1
+  record_new_service "$RUNTIME_DIR/t2i.pid" "scripts/stop_t2i.sh"
 fi
 
 EDIT_BEFORE_PID="$(cat "$RUNTIME_DIR/edit.pid" 2>/dev/null || true)"
@@ -166,9 +188,10 @@ if [[ -n "$EDIT_BEFORE_PID" && "$EDIT_BEFORE_PID" == "$EDIT_AFTER_PID" ]]; then
 else
   info "Edit worker loaded once (new pid=$EDIT_AFTER_PID)"
   EDIT_LOADED=1
+  record_new_service "$RUNTIME_DIR/edit.pid" "scripts/stop_edit.sh"
 fi
 
-# ---------------- coordinator (reuse healthy resident process) ----------------
+# ---------------- coordinator (reuse only with current-token + identity proof) ----------------
 if is_endpoint_healthy "$T2I_URL" "mage-flow-turbo" "cuda:0" "$T2I_MODEL"; then
   echo '[PASS] T2I_WORKER_READY'
 else
@@ -180,29 +203,32 @@ else
   fail "Edit worker not healthy after start"
 fi
 
-if [[ -f "$RUNTIME_DIR/server.pid" ]] && kill -0 "$(cat "$RUNTIME_DIR/server.pid")" 2>/dev/null; then
-  if python - "$REST_URL" <<'PY' >/dev/null 2>&1
-import json, sys, urllib.request
-try:
-    with urllib.request.urlopen(sys.argv[1] + "/health", timeout=2) as r:
-        json.load(r)
-except Exception:
-    sys.exit(1)
-PY
-  then
+COORDINATOR_REUSED=0
+if [[ -f "$RUNTIME_DIR/server.pid" ]]; then
+  if python scripts/process_identity.py check \
+       --pid-file "$RUNTIME_DIR/server.pid" \
+       --kind coordinator \
+       --project-root "$PROJECT_ROOT" \
+       --port "$REST_PORT" \
+       --health-url "$REST_URL" \
+       --token-file "$TOKEN_FILE"; then
     echo "[PASS] REST_COORDINATOR_ALREADY_RUNNING pid=$(cat "$RUNTIME_DIR/server.pid")"
+    COORDINATOR_REUSED=1
   else
-    fail "coordinator pid alive but /health failed"
+    echo "[WARN] coordinator pid=$(cat "$RUNTIME_DIR/server.pid") failed current-token/identity check; restarting it"
+    bash scripts/stop.sh || true
+    rm -f "$RUNTIME_DIR/server.pid"
   fi
-else
-  rm -f "$RUNTIME_DIR/server.pid"
-  echo '[INFO] Starting authenticated REST coordinator on 127.0.0.1:8090'
-  MAGE_FLOW_T2I_INTERNAL_URL="${MAGE_FLOW_T2I_INTERNAL_URL:-$T2I_URL}" \
-  MAGE_FLOW_EDIT_INTERNAL_URL="${MAGE_FLOW_EDIT_INTERNAL_URL:-$EDIT_URL}" \
-  nohup python -m uvicorn server.app:app --host 127.0.0.1 --port 8090 \
+fi
+if [[ "$COORDINATOR_REUSED" == "0" ]]; then
+  echo "[INFO] Starting authenticated REST coordinator on ${REST_URL}"
+  nohup python -m uvicorn server.app:app \
+    --host 127.0.0.1 \
+    --port "$REST_PORT" \
     > "$RUNTIME_DIR/server.log" 2>&1 &
   echo $! > "$RUNTIME_DIR/server.pid"
   echo "[INFO] pid=$(cat "$RUNTIME_DIR/server.pid")"
+  record_new_service "$RUNTIME_DIR/server.pid" "scripts/stop.sh"
 fi
 
 # ---------------- readiness ----------------

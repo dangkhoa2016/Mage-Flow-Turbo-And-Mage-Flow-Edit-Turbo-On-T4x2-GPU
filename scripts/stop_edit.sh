@@ -1,19 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJECT_ROOT"
 if [[ -f .runtime/edit.pid ]]; then
-  pid="$(cat .runtime/edit.pid)"
-  if kill -0 "$pid" 2>/dev/null; then
-    if [[ -r "/proc/$pid/cmdline" ]] && grep -q "edit_runtime_server" "/proc/$pid/cmdline" 2>/dev/null; then
-      kill "$pid"
-      echo "[PASS] EDIT_WORKER_STOPPED pid=$pid"
-    else
-      echo "[WARN] pid=$pid does not match Edit runtime server; removing stale pid file without killing"
-    fi
-  else
-    echo "[INFO] stale Edit pid file: $pid"
-  fi
-  rm -f .runtime/edit.pid
+  bash scripts/stop_process.sh \
+    --pid-file .runtime/edit.pid \
+    --kind edit_worker \
+    --project-root "$PROJECT_ROOT" \
+    --port "${MAGE_FLOW_EDIT_INTERNAL_PORT:-8102}" \
+    --device cuda:1
 else
   echo '[PASS] EDIT_WORKER_ALREADY_STOPPED'
 fi

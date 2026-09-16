@@ -234,6 +234,7 @@ class Handler(BaseHTTPRequestHandler):
                 "device": self.runtime.device,
                 "gpu_names": self.runtime.gpu_names[:2],
                 "model_path": self.runtime.model_path,
+                "pid": os.getpid(),
             },
         )
 
