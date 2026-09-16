@@ -65,8 +65,24 @@ warn_redundant_casts = true
 files = ["server", "scripts"]
 
 [[tool.mypy.overrides]]
-# mage_flow lives only inside the GPU-qualified runtime environment; the
-# coordinator and static gates must never import it. Typed wrappers treat it as
-# Any while the CPU-safe validators still reject it at cell scope (P1-16).
-module = ["mage_flow", "mage_flow.models.modules._attn_backend"]
+# mage_flow and torch live only inside the GPU-qualified runtime environment;
+# the coordinator and static gates must never import them. Typed wrappers treat
+# them as Any while the CPU-safe validators still reject them at cell scope and
+# the quality job runs mypy without a GPU venv (CPU-only mypy quality lane).
+module = [
+  "mage_flow",
+  "mage_flow.models.modules._attn_backend",
+  "mage_flow.models.modules.mage_text",
+  "mage_flow.pipeline",
+  "torch",
+]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# `server.workers.conditioning_offload` is GPU-runtime-only (torch-bound
+# controller). Its `wrapped_forward` closure line is byte-locked by the frozen
+# pinned-memory-offload patch (R14), so the missing return annotation cannot be
+# added without breaking patch application; the controller is only ever invoked
+# with a real torch model and is exercised by integration tests on the GPU box.
+module = ["server.workers.conditioning_offload"]
+disallow_incomplete_defs = false
