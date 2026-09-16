@@ -43,9 +43,29 @@ if [[ ! -d "$MODEL_PATH" ]]; then
   exit 1
 fi
 
-if [[ -f .runtime/edit.pid ]] && kill -0 "$(cat .runtime/edit.pid)" 2>/dev/null; then
-  echo "[INFO] Existing Edit worker pid=$(cat .runtime/edit.pid); checking readiness..."
-else
+process_identity_check() {
+  python scripts/process_identity.py check \
+    --pid-file .runtime/edit.pid \
+    --kind edit_worker \
+    --project-root "$PROJECT_ROOT" \
+    --port "$PORT" \
+    --device "$DEVICE" \
+    --model-path "$MODEL_PATH" \
+    "$@" >/dev/null 2>&1
+}
+
+EXISTING=0
+if [[ -f .runtime/edit.pid ]]; then
+  if process_identity_check; then
+    echo "[INFO] Existing verified Edit worker pid=$(cat .runtime/edit.pid); checking readiness..."
+    EXISTING=1
+  else
+    echo "[WARN] existing edit.pid does not match the Edit identity; cleaning it"
+    bash scripts/stop_edit.sh || true
+  fi
+fi
+
+if [[ "$EXISTING" == "0" ]]; then
   rm -f .runtime/edit.pid
   echo '[INFO] Starting localhost-only Edit runtime worker...'
   PYTHONUNBUFFERED=1 nohup "$RUNTIME_PYTHON" \
@@ -62,25 +82,16 @@ fi
 DEADLINE=$((SECONDS + ${MAGE_FLOW_EDIT_START_TIMEOUT_SECONDS:-900}))
 LAST_REPORT=0
 while (( SECONDS < DEADLINE )); do
+  if process_identity_check --health-url "$URL" --model mage-flow-edit-turbo; then
+    echo '[PASS] EDIT_WORKER_READY'
+    exit 0
+  fi
+
   if [[ -f .runtime/edit.pid ]] && ! kill -0 "$(cat .runtime/edit.pid)" 2>/dev/null; then
     echo '[FAIL] Edit worker exited before readiness.'
     tail -n 80 .runtime/edit.log || true
     rm -f .runtime/edit.pid
     exit 1
-  fi
-
-  if python - "$URL" "$MODEL_PATH" <<'PY' >/dev/null 2>&1
-import json, os, sys, urllib.request
-with urllib.request.urlopen(sys.argv[1] + '/health', timeout=2) as r:
-    data = json.load(r)
-assert data['ready'] is True
-assert data['device'] == 'cuda:1'
-assert data['model'] == 'mage-flow-edit-turbo'
-assert os.path.realpath(data['model_path']) == os.path.realpath(sys.argv[2])
-PY
-  then
-    echo '[PASS] EDIT_WORKER_READY'
-    exit 0
   fi
 
   if (( SECONDS - LAST_REPORT >= 15 )); then
@@ -93,9 +104,5 @@ done
 
 echo '[FAIL] Edit worker readiness timeout'
 tail -n 100 .runtime/edit.log || true
-if [[ -f .runtime/edit.pid ]]; then
-  pid="$(cat .runtime/edit.pid)"
-  kill "$pid" 2>/dev/null || true
-  rm -f .runtime/edit.pid
-fi
+bash scripts/stop_edit.sh || true
 exit 1
