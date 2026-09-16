@@ -16,13 +16,14 @@ ROOT = Path(__file__).resolve().parent.parent
 RUNTIME_CONFIG = ROOT / "scripts" / "runtime_config.py"
 
 
-def _run(*args: str) -> subprocess.CompletedProcess:
+def _run(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, str(RUNTIME_CONFIG), *args],
         cwd=ROOT,
         capture_output=True,
         text=True,
         timeout=30,
+        env=env,
     )
 
 
@@ -162,6 +163,43 @@ def test_token_with_nul_rejected_via_python_authority():
         from server.token_contract import validate_public_token_value
 
         validate_public_token_value("a" * 31 + "\x00")
+
+
+# ---------------- resolve-model-path (P0-04 single authority) ----------------
+def test_resolve_model_path_t2i_default():
+    env = dict(os.environ)
+    env.pop("MAGE_FLOW_T2I_MODEL_PATH", None)
+    env.pop("MAGE_FLOW_EDIT_MODEL_PATH", None)
+    result = _run("resolve-model-path", "--kind", "t2i", env=env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == (
+        "/kaggle/input/models/dangkhoa2016/mage-flow-community-mage-flow-turbo/pytorch/default/1"
+    )
+
+
+def test_resolve_model_path_edit_default():
+    env = dict(os.environ)
+    env.pop("MAGE_FLOW_T2I_MODEL_PATH", None)
+    env.pop("MAGE_FLOW_EDIT_MODEL_PATH", None)
+    result = _run("resolve-model-path", "--kind", "edit", env=env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == (
+        "/kaggle/input/models/dangkhoa2016/mage-flow-community-mage-flow-edit-turbo/pytorch/default/1"
+    )
+
+
+def test_resolve_model_path_env_override():
+    env = dict(os.environ)
+    env["MAGE_FLOW_EDIT_MODEL_PATH"] = "/custom/models/edit"
+    env.pop("MAGE_FLOW_T2I_MODEL_PATH", None)
+    result = _run("resolve-model-path", "--kind", "edit", env=env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == "/custom/models/edit"
+
+
+def test_resolve_model_path_unknown_kind_rejected():
+    result = _run("resolve-model-path", "--kind", "nope")
+    assert result.returncode != 0
 
 
 # ---------------- production shell wiring ----------------

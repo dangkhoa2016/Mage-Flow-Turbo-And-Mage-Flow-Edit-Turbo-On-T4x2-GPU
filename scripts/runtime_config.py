@@ -10,7 +10,9 @@ paths consume exactly the same parsers the coordinator and workers use:
 - ``validate-port`` validates one named TCP port value;
 - ``validate-token`` validates an API token value with the shared token contract;
 - ``validate-timeout`` validates a lifecycle timeout (positive, whole-number
-  seconds, bounded) for start-readiness waits and stop grace intervals.
+  seconds, bounded) for start-readiness waits and stop grace intervals;
+- ``resolve-model-path`` resolves the canonical model path for a worker kind
+  (the same defaults the start scripts used, read from exactly one authority).
 
 Exit code ``0`` means PASS and ``1`` means FAIL; nothing is silently clamped.
 """
@@ -18,6 +20,7 @@ Exit code ``0`` means PASS and ``1`` means FAIL; nothing is silently clamped.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -45,6 +48,28 @@ def validate_ports(rest: str, t2i: str, edit: str) -> tuple[int, int, int]:
     return rest_port, t2i_port, edit_port
 
 
+CANONICAL_MODEL_PATHS = {
+    "t2i": "/kaggle/input/models/dangkhoa2016/mage-flow-community-mage-flow-turbo/pytorch/default/1",
+    "edit": "/kaggle/input/models/dangkhoa2016/mage-flow-community-mage-flow-edit-turbo/pytorch/default/1",
+}
+
+
+def resolve_model_path(kind: str) -> str:
+    """Return the canonical model path for a worker kind.
+
+    ``MAGE_FLOW_T2I_MODEL_PATH`` / ``MAGE_FLOW_EDIT_MODEL_PATH`` win when set and
+    non-empty (matching the previous ``${VAR:-default}`` semantics); otherwise the
+    shared constant is returned so start, stop, and publication paths never copy
+    model-path defaults into multiple shell files (P0-04).
+    """
+    if kind not in CANONICAL_MODEL_PATHS:
+        raise ConfigError(f"unknown model kind: {kind!r}")
+    override = os.environ.get(f"MAGE_FLOW_{kind.upper()}_MODEL_PATH")
+    if override:
+        return override
+    return CANONICAL_MODEL_PATHS[kind]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Executable configuration authority for shell lifecycle scripts")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -67,9 +92,15 @@ def main(argv: list[str] | None = None) -> int:
     token_parser = subparsers.add_parser("validate-token", help="validate an API token value")
     token_parser.add_argument("--value", required=True, help="raw API token value")
 
+    resolve_parser = subparsers.add_parser("resolve-model-path", help="resolve the canonical worker model path")
+    resolve_parser.add_argument("--kind", required=True, choices=sorted(CANONICAL_MODEL_PATHS), help="worker kind")
+
     args = parser.parse_args(argv)
 
     try:
+        if args.command == "resolve-model-path":
+            print(resolve_model_path(args.kind), flush=True)
+            return 0
         if args.command == "validate-ports":
             _, _, _ = validate_ports(args.rest, args.t2i, args.edit)
             print("[PASS] PORT_CONFIGURATION_VALID", flush=True)

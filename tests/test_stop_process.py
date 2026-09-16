@@ -18,7 +18,14 @@ def _spawn_sleeper(argv0: str, args: list[str], cwd: str):
         return proc
 
 
-def _run_stop(kind: str, pid_file: Path, *, port: str | None = None, device: str | None = None):
+def _run_stop(
+    kind: str,
+    pid_file: Path,
+    *,
+    port: str | None = None,
+    device: str | None = None,
+    model_path: str | None = None,
+):
     cmd = [
         "bash",
         str(STOP_WRAPPER),
@@ -33,6 +40,8 @@ def _run_stop(kind: str, pid_file: Path, *, port: str | None = None, device: str
         cmd += ["--port", port]
     if device:
         cmd += ["--device", device]
+    if model_path:
+        cmd += ["--model-path", model_path]
     return subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=60)
 
 
@@ -45,11 +54,49 @@ def test_stop_worker_terms_and_removes_pid_file(tmp_path):
     pid_file = tmp_path / "t2i.pid"
     pid_file.write_text(str(proc.pid))
     try:
-        result = _run_stop("t2i_worker", pid_file, port="8101", device="cuda:0")
+        result = _run_stop("t2i_worker", pid_file, port="8101", device="cuda:0", model_path="/models/t2i")
         assert result.returncode == 0, result.stdout + result.stderr
         assert "[PASS] t2i_worker_STOPPED" in result.stdout
         assert not pid_file.exists()
         assert proc.wait(timeout=15) == -signal.SIGTERM
+    finally:
+        if _is_alive(proc.pid):
+            proc.kill()
+
+
+def test_stop_worker_with_wrong_model_path_not_signalled(tmp_path):
+    proc = _spawn_sleeper(
+        "server/workers/t2i_runtime_server.py",
+        ["--host", "127.0.0.1", "--port", "8101", "--device", "cuda:0", "--model-path", "/models/wrong"],
+        str(ROOT),
+    )
+    pid_file = tmp_path / "t2i.pid"
+    pid_file.write_text(str(proc.pid))
+    try:
+        result = _run_stop("t2i_worker", pid_file, port="8101", device="cuda:0", model_path="/models/t2i")
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "without killing" in result.stdout
+        assert not pid_file.exists()
+        assert _is_alive(proc.pid)
+    finally:
+        if _is_alive(proc.pid):
+            proc.kill()
+
+
+def test_stop_worker_missing_model_path_argument_not_signalled(tmp_path):
+    proc = _spawn_sleeper(
+        "server/workers/t2i_runtime_server.py",
+        ["--host", "127.0.0.1", "--port", "8101", "--device", "cuda:0"],
+        str(ROOT),
+    )
+    pid_file = tmp_path / "t2i.pid"
+    pid_file.write_text(str(proc.pid))
+    try:
+        result = _run_stop("t2i_worker", pid_file, port="8101", device="cuda:0", model_path="/models/t2i")
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "without killing" in result.stdout
+        assert not pid_file.exists()
+        assert _is_alive(proc.pid)
     finally:
         if _is_alive(proc.pid):
             proc.kill()
