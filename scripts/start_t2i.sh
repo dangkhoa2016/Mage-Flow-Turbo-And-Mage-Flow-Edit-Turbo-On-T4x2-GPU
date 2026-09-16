@@ -43,9 +43,29 @@ if [[ ! -d "$MODEL_PATH" ]]; then
   exit 1
 fi
 
-if [[ -f .runtime/t2i.pid ]] && kill -0 "$(cat .runtime/t2i.pid)" 2>/dev/null; then
-  echo "[INFO] Existing T2I worker pid=$(cat .runtime/t2i.pid); checking readiness..."
-else
+process_identity_check() {
+  python scripts/process_identity.py check \
+    --pid-file .runtime/t2i.pid \
+    --kind t2i_worker \
+    --project-root "$PROJECT_ROOT" \
+    --port "$PORT" \
+    --device "$DEVICE" \
+    --model-path "$MODEL_PATH" \
+    "$@" >/dev/null 2>&1
+}
+
+EXISTING=0
+if [[ -f .runtime/t2i.pid ]]; then
+  if process_identity_check; then
+    echo "[INFO] Existing verified T2I worker pid=$(cat .runtime/t2i.pid); checking readiness..."
+    EXISTING=1
+  else
+    echo "[WARN] existing t2i.pid does not match the T2I identity; cleaning it"
+    bash scripts/stop_t2i.sh || true
+  fi
+fi
+
+if [[ "$EXISTING" == "0" ]]; then
   rm -f .runtime/t2i.pid
   echo '[INFO] Starting localhost-only T2I runtime worker...'
   PYTHONUNBUFFERED=1 nohup "$RUNTIME_PYTHON" \
@@ -62,25 +82,16 @@ fi
 DEADLINE=$((SECONDS + ${MAGE_FLOW_T2I_START_TIMEOUT_SECONDS:-900}))
 LAST_REPORT=0
 while (( SECONDS < DEADLINE )); do
+  if process_identity_check --health-url "$URL" --model mage-flow-turbo; then
+    echo '[PASS] T2I_WORKER_READY'
+    exit 0
+  fi
+
   if [[ -f .runtime/t2i.pid ]] && ! kill -0 "$(cat .runtime/t2i.pid)" 2>/dev/null; then
     echo '[FAIL] T2I worker exited before readiness.'
     tail -n 80 .runtime/t2i.log || true
     rm -f .runtime/t2i.pid
     exit 1
-  fi
-
-  if python - "$URL" "$MODEL_PATH" <<'PY' >/dev/null 2>&1
-import json, os, sys, urllib.request
-with urllib.request.urlopen(sys.argv[1] + '/health', timeout=2) as r:
-    data = json.load(r)
-assert data['ready'] is True
-assert data['device'] == 'cuda:0'
-assert data['model'] == 'mage-flow-turbo'
-assert os.path.realpath(data['model_path']) == os.path.realpath(sys.argv[2])
-PY
-  then
-    echo '[PASS] T2I_WORKER_READY'
-    exit 0
   fi
 
   if (( SECONDS - LAST_REPORT >= 15 )); then
@@ -93,9 +104,5 @@ done
 
 echo '[FAIL] T2I worker readiness timeout'
 tail -n 100 .runtime/t2i.log || true
-if [[ -f .runtime/t2i.pid ]]; then
-  pid="$(cat .runtime/t2i.pid)"
-  kill "$pid" 2>/dev/null || true
-  rm -f .runtime/t2i.pid
-fi
+bash scripts/stop_t2i.sh || true
 exit 1

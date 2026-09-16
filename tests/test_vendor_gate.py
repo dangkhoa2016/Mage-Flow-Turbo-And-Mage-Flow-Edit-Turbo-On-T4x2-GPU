@@ -93,6 +93,13 @@ def test_orchestrator_uses_fail_closed_gate():
     assert '[[ -n "$ACTUAL_COMMIT" &&' not in script
 
 
+def test_expected_mage_commit_is_immutable_project_constant():
+    script = (ROOT / "scripts" / "run_public_candidate.sh").read_text(encoding="utf-8")
+    assert "EXPECTED_MAGE_COMMIT=\"76bec2bb3818863f470de7e867c2dc7f1d0bfd83\"" in script
+    assert "EXPECTED_MAGE_COMMIT=\"${EXPECTED_MAGE_COMMIT:-" not in script
+    assert "EXPECTED_MAGE_COMMIT:-" not in script
+
+
 def _extract_bash_function(script: str, name: str) -> list[str]:
     lines = script.splitlines()
     start = None

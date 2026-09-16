@@ -107,12 +107,11 @@ def test_validator_rejects_missing_bilingual_markdown(mutated_notebook):
     assert "not all markdown cells are bilingual" in result.stdout
 
 
-def test_notebook_token_file_uses_strict_permissions():
+def test_notebook_token_file_delegates_to_fail_closed_token_store():
     nb = json.loads(NOTEBOOK.read_text())
     code_text = "\n".join("".join(c.get("source", [])) for c in nb["cells"] if c["cell_type"] == "code")
-    assert "runtime_dir.chmod(0o700)" in code_text
-    assert "token_file.chmod(0o600)" in code_text
-    assert "token_file.write_text(" in code_text
+    assert "from scripts.token_store import ensure_token" in code_text
+    assert "token_file.write_text(" not in code_text
 
 
 def _first_code_cell():
@@ -157,16 +156,14 @@ def _extract_notebook_functions(cell, names):
 
 def test_notebook_token_mode_new_and_reused_is_enforced(tmp_path):
     cell = _first_code_cell()
-    funcs = _extract_notebook_functions(cell, {"_enforce_token_permissions", "resolve_token"})
+    funcs = _extract_notebook_functions(cell, {"resolve_token"})
     project_root = tmp_path / "project"
     ns = {
         "Path": Path,
         "os": os,
-        "secrets": __import__("secrets"),
         "PROJECT_ROOT": project_root,
     }
-    exec("from pathlib import Path\nos = __import__('os')\nsecrets = __import__('secrets')\n", ns)
-    exec(funcs["_enforce_token_permissions"], ns)
+    exec("from pathlib import Path\nos = __import__('os')\n", ns)
     exec(funcs["resolve_token"], ns)
 
     token = project_root / ".runtime" / "api_token"
