@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import io
 import threading
 import time
@@ -18,6 +19,11 @@ def _tiny_png_bytes() -> bytes:
     buffer = io.BytesIO()
     Image.new("RGB", (8, 8), (10, 200, 90)).save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+def _png_data_url() -> str:
+    payload = base64.b64encode(_tiny_png_bytes()).decode("ascii")
+    return f"{OUTPUT_DATA_URL_PREFIX}{payload}"
 
 
 # --- bearer-token semantics ---
@@ -172,7 +178,7 @@ def test_qualified_generation_request_unchanged(monkeypatch):
                 "width": 1024,
                 "height": 1024,
                 "elapsed_seconds": 1.0,
-                "output": f"{OUTPUT_DATA_URL_PREFIX}abc",
+                "output": _png_data_url(),
             }
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -216,7 +222,7 @@ def test_generation_response_model_constraints(field, value):
         "width": 1024,
         "height": 1024,
         "elapsed_seconds": 1.0,
-        "output": f"{OUTPUT_DATA_URL_PREFIX}abc",
+        "output": _png_data_url(),
     }
     payload[field] = value
     with pytest.raises(ValidationError):
@@ -235,7 +241,7 @@ def test_edit_response_model_constraints(field, value):
         "device": "cuda:1",
         "seed": 42,
         "elapsed_seconds": 1.0,
-        "output": f"{OUTPUT_DATA_URL_PREFIX}abc",
+        "output": _png_data_url(),
     }
     payload[field] = value
     with pytest.raises(ValidationError):
@@ -266,7 +272,7 @@ def test_health_remains_responsive_while_edit_worker_blocked(monkeypatch):
                 "device": "cuda:1",
                 "seed": kwargs["seed"],
                 "elapsed_seconds": 1.0,
-                "output": f"{OUTPUT_DATA_URL_PREFIX}abc",
+                "output": _png_data_url(),
             }
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -325,7 +331,7 @@ def test_second_t2i_request_while_busy_gets_429(monkeypatch):
                 "width": 1024,
                 "height": 1024,
                 "elapsed_seconds": 1.0,
-                "output": f"{OUTPUT_DATA_URL_PREFIX}abc",
+                "output": _png_data_url(),
             }
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -381,7 +387,7 @@ def test_second_edit_request_while_busy_gets_429(monkeypatch):
                 "device": "cuda:1",
                 "seed": kwargs["seed"],
                 "elapsed_seconds": 1.0,
-                "output": f"{OUTPUT_DATA_URL_PREFIX}abc",
+                "output": _png_data_url(),
             }
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -441,7 +447,7 @@ def test_t2i_and_edit_lanes_run_concurrently(monkeypatch):
                 "width": 1024,
                 "height": 1024,
                 "elapsed_seconds": 1.0,
-                "output": f"{OUTPUT_DATA_URL_PREFIX}abc",
+                "output": _png_data_url(),
             }
 
     class _ReadyEditWorker:
@@ -456,7 +462,7 @@ def test_t2i_and_edit_lanes_run_concurrently(monkeypatch):
                 "device": "cuda:1",
                 "seed": kwargs["seed"],
                 "elapsed_seconds": 1.0,
-                "output": f"{OUTPUT_DATA_URL_PREFIX}abc",
+                "output": _png_data_url(),
             }
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -515,7 +521,7 @@ def test_gate_releases_on_worker_exception(monkeypatch):
                 "width": 1024,
                 "height": 1024,
                 "elapsed_seconds": 1.0,
-                "output": f"{OUTPUT_DATA_URL_PREFIX}abc",
+                "output": _png_data_url(),
             }
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -559,7 +565,7 @@ def test_invalid_request_rejected_before_gate_admission(monkeypatch):
                 "width": 1024,
                 "height": 1024,
                 "elapsed_seconds": 1.0,
-                "output": f"{OUTPUT_DATA_URL_PREFIX}abc",
+                "output": _png_data_url(),
             }
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)

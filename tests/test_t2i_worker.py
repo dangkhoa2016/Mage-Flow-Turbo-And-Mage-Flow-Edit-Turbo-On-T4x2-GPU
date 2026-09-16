@@ -1,7 +1,10 @@
+import base64
+import io
 import json
 from unittest.mock import patch
 
 import pytest
+from PIL import Image
 from server.workers.t2i import (
     T2IWorkerClient,
     T2IWorkerConfig,
@@ -10,6 +13,16 @@ from server.workers.t2i import (
 from server.workers.t2i_runtime_server import validate_generation_payload
 
 AUTH_TOKEN = "kaggle-demo-test-token-0123456789abcdef0123456789abcdef"
+
+
+def _tiny_png_bytes() -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGB", (8, 8), (10, 200, 90)).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _png_data_url() -> str:
+    return "data:image/png;base64," + base64.b64encode(_tiny_png_bytes()).decode("ascii")
 
 
 class FakeResponse:
@@ -95,7 +108,7 @@ def test_client_generate_forwards_public_contract():
         "width": 1024,
         "height": 1024,
         "elapsed_seconds": 1.2,
-        "output": "data:image/png;base64,abc",
+        "output": _png_data_url(),
     }
     client = T2IWorkerClient(T2IWorkerConfig())
     captured = {}
@@ -218,7 +231,7 @@ class _ReadyT2IWorker:
             "width": width,
             "height": height,
             "elapsed_seconds": 1.0,
-            "output": "data:image/png;base64,abc",
+            "output": _png_data_url(),
         }
 
 
