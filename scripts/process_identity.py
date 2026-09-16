@@ -51,7 +51,7 @@ EXPECTED_SCRIPT_TOKENS = {
     KIND_COORD: "server.app:app",
 }
 
-PROJECT_NAME = "mage-flow-turbo-and-mage-flow-edit-turbo-on-t4x2-gpu"
+PROJECT_NAME = "Mage-Flow-Turbo-And-Mage-Flow-Edit-Turbo-On-T4x2-GPU"
 
 MAX_PID_DIGITS = 10
 
