@@ -7,7 +7,8 @@ Offline checks:
      .gitignore, project_state.json, source notebook, server/scripts/tests).
   3. project_state.json fields are type-consistent and do not drift from the
      repository reality (devices, internal worker URLs, CPU fallback disabled,
-     MIT license, public notebook path, CI/community metadata files).
+     frozen acceptance profile, output-format contract, truthful publication
+     flags, MIT license, public notebook path, CI/community metadata files).
 
 Usage:
     python scripts/validate_repository.py [--root DIR]
@@ -50,10 +51,22 @@ MANDATORY_PATHS = (
     "project_state.json",
     "notebooks/mage-flow-t4x2-production-rest-api-demo.ipynb",
     "server/app.py",
-    "scripts/run_public_candidate.sh",
+    "scripts/run_public_acceptance.sh",
     "tests/test_acceptance.py",
     ".github/workflows/ci.yml",
 )
+
+# project_state.json machine authority: the frozen worker/coordinator profile.
+T2I_DEVICE = "cuda:0"
+EDIT_DEVICE = "cuda:1"
+T2I_INTERNAL_URL = "http://127.0.0.1:8101"
+EDIT_INTERNAL_URL = "http://127.0.0.1:8102"
+T2I_ACCEPTANCE_WIDTH = 1024
+T2I_ACCEPTANCE_HEIGHT = 1024
+T2I_REQUEST_TIMEOUT_SECONDS = 3600
+EDIT_MAX_SIZE = 1024
+OUTPUT_FORMAT = "data:image/png;base64"
+ACCELERATOR = "Kaggle NVIDIA T4 x2"
 
 
 def tracked_files(root: Path) -> list[str]:
@@ -127,24 +140,47 @@ def check_project_state(root: Path) -> list[str]:
         return [f"project_state.json missing: {state_path}"]
     state = json.loads(state_path.read_text(encoding="utf-8"))
     runtime = state.get("runtime", {})
-    if runtime.get("accelerator") != "Kaggle NVIDIA T4 x2":
+    if runtime.get("accelerator") != ACCELERATOR:
         errors.append("project_state runtime.accelerator does not match README accelerator")
     if runtime.get("cpu_fallback") is not False:
         errors.append("project_state runtime.cpu_fallback must be false")
-    if runtime.get("t2i_device") != "cuda:0":
+    if runtime.get("t2i_device") != T2I_DEVICE:
         errors.append("project_state runtime.t2i_device must be cuda:0")
-    if runtime.get("edit_device") != "cuda:1":
+    if runtime.get("edit_device") != EDIT_DEVICE:
         errors.append("project_state runtime.edit_device must be cuda:1")
     t2i = state.get("t2i_integration", {})
     edit = state.get("edit_integration", {})
-    if t2i.get("device") != "cuda:0":
+    if t2i.get("device") != T2I_DEVICE:
         errors.append("project_state t2i_integration.device must be cuda:0")
-    if edit.get("device") != "cuda:1":
+    if edit.get("device") != EDIT_DEVICE:
         errors.append("project_state edit_integration.device must be cuda:1")
-    if t2i.get("internal_url") != "http://127.0.0.1:8101":
+    if t2i.get("internal_url") != T2I_INTERNAL_URL:
         errors.append("project_state t2i_integration.internal_url does not match worker default")
-    if edit.get("internal_url") != "http://127.0.0.1:8102":
+    if edit.get("internal_url") != EDIT_INTERNAL_URL:
         errors.append("project_state edit_integration.internal_url does not match worker default")
+    if t2i.get("output_format") != OUTPUT_FORMAT:
+        errors.append("project_state t2i_integration.output_format must be the PNG data URL contract")
+    if edit.get("output_format") != OUTPUT_FORMAT:
+        errors.append("project_state edit_integration.output_format must be the PNG data URL contract")
+    if t2i.get("acceptance_width") != T2I_ACCEPTANCE_WIDTH:
+        errors.append("project_state t2i_integration.acceptance_width must be 1024")
+    if t2i.get("acceptance_height") != T2I_ACCEPTANCE_HEIGHT:
+        errors.append("project_state t2i_integration.acceptance_height must be 1024")
+    if t2i.get("request_timeout_seconds") != T2I_REQUEST_TIMEOUT_SECONDS:
+        errors.append("project_state t2i_integration.request_timeout_seconds must be 3600")
+    if edit.get("max_size") != EDIT_MAX_SIZE:
+        errors.append("project_state edit_integration.max_size must be 1024")
+    notebook = state.get("public_notebook_validation", {})
+    if notebook.get("structural_validation") is not True:
+        errors.append("project_state public_notebook_validation.structural_validation must be true")
+    if notebook.get("live_run_all") is not False:
+        errors.append(
+            "project_state public_notebook_validation.live_run_all must remain false until fresh Kaggle evidence"
+        )
+    if notebook.get("saved_version_verified") is not False:
+        errors.append(
+            "project_state public_notebook_validation.saved_version_verified must remain false until verified"
+        )
     if state.get("license_status") != "MIT":
         errors.append("project_state license_status must be MIT")
     public_notebook = state.get("public_notebook")
@@ -174,6 +210,8 @@ def main() -> int:
     print(f"[INFO] tracked files checked (hygiene): {len(tracked_files(root))}")
     print("[INFO] mandatory repository files present; project_state.json consistent")
     print("[PASS] REPOSITORY_HYGIENE_VALID")
+    print("[PASS] PROJECT_STATE_MACHINE_AUTHORITY")
+    print("[PASS] PROJECT_STATE_PUBLICATION_FLAGS_TRUTHFUL")
     return 0
 
 

@@ -48,6 +48,10 @@ def _tiny_png_bytes() -> bytes:
     return buffer.getvalue()
 
 
+def _png_data_url() -> str:
+    return "data:image/png;base64," + base64.b64encode(_tiny_png_bytes()).decode("ascii")
+
+
 def test_edit_config_defaults_to_cuda1():
     cfg = EditWorkerConfig()
     assert cfg.device == "cuda:1"
@@ -166,7 +170,7 @@ def test_client_edit_forwards_base64_image_and_public_contract():
         "width": 16,
         "height": 16,
         "elapsed_seconds": 1.2,
-        "output": "data:image/png;base64,abc",
+        "output": _png_data_url(),
     }
     client = EditWorkerClient(EditWorkerConfig())
     captured = {}
@@ -302,7 +306,7 @@ class _ReadyEditWorker:
             "width": 16,
             "height": 16,
             "elapsed_seconds": 1.0,
-            "output": "data:image/png;base64,abc",
+            "output": _png_data_url(),
         }
 
 
@@ -513,7 +517,7 @@ class _TrackingReadyEditWorker:
             "width": 16,
             "height": 16,
             "elapsed_seconds": 1.0,
-            "output": "data:image/png;base64,abc",
+            "output": _png_data_url(),
         }
 
 

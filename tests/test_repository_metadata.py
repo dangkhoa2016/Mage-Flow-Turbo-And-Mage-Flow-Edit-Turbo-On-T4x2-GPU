@@ -40,6 +40,27 @@ def test_github_ci_runs_cpu_safe_validation() -> None:
         assert item in text
 
 
+def test_github_ci_installs_are_non_editable() -> None:
+    text = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert 'python -m pip install ".[test]"' in text
+    assert 'python -m pip install ".[test,quality]"' in text
+    assert "pip install -e" not in text
+
+
+def test_github_ci_git_integrity_gates_present() -> None:
+    text = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    required = [
+        "git diff --check",
+        "git show --check --oneline --decorate HEAD >/dev/null",
+        'git show --check --format=fuller --no-ext-diff "$c" >/dev/null || exit 1',
+        "git rev-list --reverse HEAD",
+        "git fsck --full --no-reflogs",
+    ]
+    for item in required:
+        assert item in text
+    assert "HEAD == main" not in text
+
+
 def test_github_community_metadata_is_present() -> None:
     required_paths = [
         ".github/CONTRIBUTING.md",

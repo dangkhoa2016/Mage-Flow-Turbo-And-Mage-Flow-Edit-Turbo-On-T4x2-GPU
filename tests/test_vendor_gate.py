@@ -1,100 +1,138 @@
+import importlib.util
 import os
 import subprocess
-import textwrap
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-
-# The vendor gate must be fail-closed: an unresolvable or non-Git source must
-# fail instead of being accepted by default.
-GATE_SNIPPET = r"""
-EXPECTED_MAGE_COMMIT='abc123def456'
-check_gate() {
-  local mage_source="$1"
-  ACTUAL_COMMIT="$(git -C "$mage_source" rev-parse HEAD 2>/dev/null || true)"
-  if [[ "$ACTUAL_COMMIT" != "$EXPECTED_MAGE_COMMIT" ]]; then
-    echo "FAIL: expected $EXPECTED_MAGE_COMMIT, found ${ACTUAL_COMMIT:-<unresolved>}"
-    return 1
-  fi
-  echo "PASS"
-  return 0
-}
-"""
+VALIDATOR = ROOT / "scripts" / "validate_vendor_source.py"
+CANONICAL_MAGE_COMMIT = "76bec2bb3818863f470de7e867c2dc7f1d0bfd83"
 
 
-def _run_gate(mage_source: str) -> tuple[int, str]:
-    script = textwrap.dedent(GATE_SNIPPET) + f"check_gate '{mage_source}'\n"
-    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
-    return result.returncode, result.stdout.strip() + result.stderr.strip()
+def _load_validator():
+    spec = importlib.util.spec_from_file_location("validate_vendor_source", VALIDATOR)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
 
 
-def test_matching_commit_passes(tmp_path):
+def _run_cli(source: Path, env_extra: dict[str, str] | None = None):
+    env = os.environ.copy()
+    if env_extra:
+        env.update(env_extra)
+    return subprocess.run(
+        [sys.executable, str(VALIDATOR), str(source)],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+
+def _init_repo(tmp_path, commit: bool = True) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
-    subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test User"], check=True)
-    subprocess.run(["git", "-C", str(repo), "config", "user.email", "test@example.invalid"], check=True)
-    subprocess.run(["git", "-C", str(repo), "commit", "--allow-empty", "-q", "-m", "seed"], check=True)
-    commit = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"]).decode().strip()
-    script = textwrap.dedent(GATE_SNIPPET) + f"EXPECTED_MAGE_COMMIT='{commit}'\ncheck_gate '{repo}'\n"
-    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
-    assert result.returncode == 0
-    assert result.stdout.strip() == "PASS"
+    if commit:
+        subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test User"], check=True)
+        subprocess.run(["git", "-C", str(repo), "config", "user.email", "test@example.invalid"], check=True)
+        subprocess.run(["git", "-C", str(repo), "commit", "--allow-empty", "-q", "-m", "seed"], check=True)
+    return repo
+
+
+def test_canonical_commit_constant_is_immutable_and_single_source():
+    validator = _load_validator()
+    assert validator.MAGE_CANONICAL_COMMIT == CANONICAL_MAGE_COMMIT
+    orchestrator = (ROOT / "scripts" / "run_public_acceptance.sh").read_text(encoding="utf-8")
+    assert "EXPECTED_MAGE_COMMIT" not in orchestrator
+    assert "ACTUAL_COMMIT=" not in orchestrator
+    assert CANONICAL_MAGE_COMMIT not in orchestrator
+
+
+def test_validator_never_reads_environment():
+    source = VALIDATOR.read_text(encoding="utf-8")
+    assert "os.environ" not in source
+    assert "getenv" not in source
+    assert "from os import" not in source
+    assert "import os" not in source
+
+
+def test_matching_expected_commit_passes(tmp_path):
+    repo = _init_repo(tmp_path)
+    actual = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"]).decode().strip()
+    validator = _load_validator()
+    ok, message = validator.check_vendor_commit(repo, expected_commit=actual)
+    assert ok is True
+    assert message == actual
+
+
+def test_cli_default_enforces_immutable_canonical_commit(tmp_path):
+    repo = _init_repo(tmp_path)
+    result = _run_cli(repo)
+    assert result.returncode != 0
+    assert "[FAIL]" in result.stdout
+    assert "commit mismatch" in result.stdout
+    assert CANONICAL_MAGE_COMMIT in result.stdout
 
 
 def test_wrong_commit_fails(tmp_path):
-    expected = "abc123def456"
-    script = textwrap.dedent(GATE_SNIPPET) + f"EXPECTED_MAGE_COMMIT='{expected}'\ncheck_gate '{tmp_path}'\n"
-    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+    repo = _init_repo(tmp_path)
+    result = _run_cli(repo)
     assert result.returncode != 0
-    assert "FAIL" in result.stdout + result.stderr
+    assert "[FAIL]" in result.stdout
 
 
-def test_non_git_path_fails(tmp_path):
-    (tmp_path / "vendor" / "Mage").mkdir(parents=True)
-    script = textwrap.dedent(GATE_SNIPPET) + f"check_gate '{tmp_path / 'vendor' / 'Mage'}'\n"
-    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+def test_environment_cannot_redefine_expected_commit(tmp_path):
+    repo = _init_repo(tmp_path)
+    actual = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"]).decode().strip()
+    env_extra = {"EXPECTED_MAGE_COMMIT": actual, "MAGE_VENDOR_COMMIT": actual}
+    result = _run_cli(repo, env_extra=env_extra)
     assert result.returncode != 0
-    assert "FAIL" in result.stdout + result.stderr
-    assert "<unresolved>" in result.stdout + result.stderr
-
-
-def test_unresolvable_head_fails(tmp_path):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
-    script = textwrap.dedent(GATE_SNIPPET) + f"check_gate '{repo}'\n"
-    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
-    assert result.returncode != 0
-    assert "FAIL" in result.stdout + result.stderr
+    assert "commit mismatch" in result.stdout
+    assert CANONICAL_MAGE_COMMIT in result.stdout
 
 
 def test_missing_source_fails(tmp_path):
     missing = tmp_path / "does-not-exist"
-    script = textwrap.dedent(GATE_SNIPPET) + f"check_gate '{missing}'\n"
-    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+    result = _run_cli(missing)
     assert result.returncode != 0
-    assert "FAIL" in result.stdout + result.stderr
-    assert "<unresolved>" in result.stdout + result.stderr
+    assert "FAIL" in result.stdout
+    assert "vendor source missing" in result.stdout
 
 
-def test_orchestrator_uses_fail_closed_gate():
-    script = (ROOT / "scripts" / "run_public_candidate.sh").read_text(encoding="utf-8")
+def test_non_git_source_fails(tmp_path):
+    source = tmp_path / "vendor"
+    source.mkdir()
+    result = _run_cli(source)
+    assert result.returncode != 0
+    assert "FAIL" in result.stdout
+    assert "no resolvable Git HEAD" in result.stdout
+
+
+def test_unborn_repo_fails(tmp_path):
+    repo = _init_repo(tmp_path, commit=False)
+    result = _run_cli(repo)
+    assert result.returncode != 0
+    assert "FAIL" in result.stdout
+    assert "no resolvable Git HEAD" in result.stdout
+
+
+def test_orchestrator_delegates_to_reusable_validator():
+    script = (ROOT / "scripts" / "run_public_acceptance.sh").read_text(encoding="utf-8")
     start_script = (ROOT / "scripts" / "start.sh").read_text(encoding="utf-8")
-    assert 'if [[ "$ACTUAL_COMMIT" != "$EXPECTED_MAGE_COMMIT" ]]; then' in script
-    assert "found ${ACTUAL_COMMIT:-<unresolved>}" in script
-    assert '[[ -n "$ACTUAL_COMMIT" &&' not in script
+    assert 'python scripts/validate_vendor_source.py "$MAGE_SOURCE"' in script
+    assert 'if [[ "$ACTUAL_COMMIT" != "$EXPECTED_MAGE_COMMIT" ]]; then' not in script
+    assert "found ${ACTUAL_COMMIT:-<unresolved>}" not in script
     assert 'validate-token --value="$MAGE_FLOW_API_TOKEN"' in script
     assert 'validate-token --value "$MAGE_FLOW_API_TOKEN"' not in script
     assert 'validate-token --value="$MAGE_FLOW_API_TOKEN"' in start_script
     assert 'validate-token --value "$MAGE_FLOW_API_TOKEN"' not in start_script
 
 
-def test_expected_mage_commit_is_immutable_project_constant():
-    script = (ROOT / "scripts" / "run_public_candidate.sh").read_text(encoding="utf-8")
-    assert 'EXPECTED_MAGE_COMMIT="76bec2bb3818863f470de7e867c2dc7f1d0bfd83"' in script
-    assert 'EXPECTED_MAGE_COMMIT="${EXPECTED_MAGE_COMMIT:-' not in script
-    assert "EXPECTED_MAGE_COMMIT:-" not in script
+def test_orchestrator_passes_model_path_to_service_health_cli():
+    script = (ROOT / "scripts" / "run_public_acceptance.sh").read_text(encoding="utf-8")
+    assert 'python scripts/service_health.py "$url" "$model" "$device" "$model_path"' in script
+    assert 'is_endpoint_healthy "$url" "$model" "$device" "$model_path"' in script
 
 
 def _extract_bash_function(script: str, name: str) -> list[str]:
@@ -114,7 +152,7 @@ def _extract_bash_function(script: str, name: str) -> list[str]:
 
 
 def _run_token_function(tmp_path, prepopulate: str | None):
-    script = (ROOT / "scripts" / "run_public_candidate.sh").read_text(encoding="utf-8")
+    script = (ROOT / "scripts" / "run_public_acceptance.sh").read_text(encoding="utf-8")
     body = _extract_bash_function(script, "prepare_api_token")
     token_file = tmp_path / ".runtime" / "api_token"
     if prepopulate is not None:
@@ -155,9 +193,3 @@ def test_reused_shell_token_permission_is_corrected_to_0600(tmp_path):
     assert value == token
     assert token_file.read_text() == token
     assert _mode(token_file) == "600"
-
-
-def test_orchestrator_passes_model_path_to_service_health_cli():
-    script = (ROOT / "scripts" / "run_public_candidate.sh").read_text(encoding="utf-8")
-    assert 'python scripts/service_health.py "$url" "$model" "$device" "$model_path"' in script
-    assert 'is_endpoint_healthy "$url" "$model" "$device" "$model_path"' in script

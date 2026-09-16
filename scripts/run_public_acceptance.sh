@@ -7,13 +7,13 @@ export LD_LIBRARY_PATH="/usr/local/nvidia/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_P
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
-RUNTIME_ROOT="${MAGE_FLOW_RUNTIME_ROOT:-/kaggle/working/mage-flow-v5-t4x2-c1-concurrency-source-20260912}"
+RUNTIME_ROOT="${MAGE_FLOW_RUNTIME_ROOT:-/kaggle/working/mage-flow-t4x2-runtime}"
 RUNTIME_PYTHON="$RUNTIME_ROOT/.venv/bin/python"
 MAGE_SOURCE="$RUNTIME_ROOT/vendor/Mage"
 
-# The public-candidate expected Mage commit is an immutable project constant.
-# PUBLIC_SOURCE_AUTHORITY: vendor checkout must resolve to this exact commit.
-EXPECTED_MAGE_COMMIT="76bec2bb3818863f470de7e867c2dc7f1d0bfd83"
+# The public-acceptance-surface expected Mage commit is an immutable project constant
+# owned by scripts/validate_vendor_source.py, the single production authority.
+# PUBLIC_SOURCE_AUTHORITY: vendor checkout must resolve to that exact commit.
 
 T2I_MODEL="$(python scripts/runtime_config.py resolve-model-path --kind t2i)"
 EDIT_MODEL="$(python scripts/runtime_config.py resolve-model-path --kind edit)"
@@ -84,11 +84,8 @@ info "runtime_root=$RUNTIME_ROOT"
 info "t2i_model=$T2I_MODEL"
 info "edit_model=$EDIT_MODEL"
 
-ACTUAL_COMMIT="$(git -C "$MAGE_SOURCE" rev-parse HEAD 2>/dev/null || true)"
-if [[ "$ACTUAL_COMMIT" != "$EXPECTED_MAGE_COMMIT" ]]; then
-  fail "Mage source commit mismatch: expected $EXPECTED_MAGE_COMMIT, found ${ACTUAL_COMMIT:-<unresolved>}"
-fi
-info "mage_commit=$ACTUAL_COMMIT"
+python scripts/validate_vendor_source.py "$MAGE_SOURCE"
+info "mage_source=$MAGE_SOURCE"
 
 # Persistent per-session API token; fail-closed permissions, never printed.
 prepare_api_token() {
@@ -298,6 +295,6 @@ PY
 } > "$ACCEPT_DIR/orchestrator-reveal.txt"
 
 bar
-echo '[PASS] PUBLIC_CANDIDATE_ORCHESTRATOR_COMPLETE'
+echo '[PASS] PUBLIC_ACCEPTANCE_ORCHESTRATOR_COMPLETE'
 echo '[INFO] T2I/Edit/coordinator remain resident; do not stop them during the GPU session.'
 bar
