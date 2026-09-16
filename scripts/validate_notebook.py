@@ -2,16 +2,22 @@
 """CPU-only structural validation of the public bilingual notebook.
 
 Checks (CPU-safe, no model load, no network):
-  1. JSON parses and has exactly the expected cell topology.
-  2. Stages 00-19 appear in order in markdown; a markdown cell precedes every
-     code cell and is non-empty (contains EN + VI text).
-  3. No forbidden internal labels leak into public cell text.
-  4. Heartbeat/status markers used by long-running cells.
-  5. No naive CPU-fallback statements in public cells.
-  6. No heavy framework/model imports happen at import time inside cells
-     (torch/transformers/diffusers/keras must not be imported at cell scope).
-  7. Notebook calls the project's own scripts/API rather than rebuilding the
-     model server (no `import mage_flow`, no `MageFlowPipeline`, no `DiffusionPipeline`).
+  1. Exact cell topology (P1-15): 39 cells, stage 00 markdown-only intro, then
+     for stages 01-19 exactly one markdown cell followed by exactly one code
+     cell, all in ascending order with no missing/extra/reordered duplicates.
+  2. Framework import location (P1-16): torch is imported ONLY inside the stage
+     03 (Verify NVIDIA T4 x2) GPU hardware-preflight code cell.
+  3. Heartbeat enforcement (P1-17): the long-running helper emits [HEARTBEAT].
+  4. Execution-clean source state (P1-18): execution_count is null and outputs
+     are empty for every code cell.
+  5. Metadata authority (P1-19): Python kernel/language, runtime_target and
+     production_claim must be present and non-empty.
+  6. No operational ``assert`` safety gates in cells (gates must be explicit
+     raises so they survive ``python -O``).
+  7. Stages 00-19 appear in order in markdown; a bilingual (EN + VI) markdown
+     cell precedes every code cell.
+  8. No forbidden internal labels, no CPU fallback, no model imports at cell
+     scope, no heavy framework imports at import time.
 """
 import json
 import re
@@ -23,6 +29,9 @@ NOTEBOOK = ROOT / "notebooks" / "mage-flow-t4x2-production-rest-api-demo.ipynb"
 
 FORBIDDEN_LABELS = ("C3", "r4", "C2D1", "R5", "S29", "authority-source")
 EXPECTED_STAGES = tuple(f"{n:02d}" for n in range(20))
+EXPECTED_TOTAL_CELLS = 1 + 2 * (len(EXPECTED_STAGES) - 1)
+GPU_PREFLIGHT_STAGE = "03"
+HEARTBEAT_MARKER = "[HEARTBEAT]"
 FORBIDDEN_IMPORTS = ("import transformers", "from transformers",
                      "import diffusers", "from diffusers",
                      "import keras", "from keras",
@@ -38,13 +47,104 @@ def fail(msg):
     sys.exit(1)
 
 
+def expected_topology() -> list[tuple[str, str]]:
+    sequence: list[tuple[str, str]] = [("markdown", "00")]
+    for n in range(1, len(EXPECTED_STAGES)):
+        stage = f"{n:02d}"
+        sequence.append(("markdown", stage))
+        sequence.append(("code", stage))
+    return sequence
+
+
+def check_topology(cells, md_cells, code_cells) -> None:
+    if len(cells) != EXPECTED_TOTAL_CELLS:
+        fail(
+            "stage sequence mismatch: expected exactly "
+            f"{EXPECTED_TOTAL_CELLS} cells ({len(EXPECTED_STAGES)} markdown + "
+            f"{len(EXPECTED_STAGES) - 1} code), got {len(cells)}"
+        )
+    if len(md_cells) != len(EXPECTED_STAGES):
+        fail(f"stage sequence mismatch: expected {len(EXPECTED_STAGES)} markdown cells, got {len(md_cells)}")
+    if len(code_cells) != len(EXPECTED_STAGES) - 1:
+        fail(
+            "stage sequence mismatch: expected "
+            f"{len(EXPECTED_STAGES) - 1} code cells, got {len(code_cells)}"
+        )
+    expected = expected_topology()
+    for index, (cell, (cell_type, stage)) in enumerate(zip(cells, expected)):
+        if cell["cell_type"] != cell_type:
+            fail(
+                f"stage sequence mismatch: cell @{index} expected {cell_type} "
+                f"(stage {stage}), got {cell['cell_type']}"
+            )
+        if cell_type != "markdown":
+            continue
+        source = "".join(cell.get("source", []))
+        if not re.match(rf"#+\s+{re.escape(stage)}\b", source.strip()):
+            fail(
+                "stage sequence mismatch: markdown cell @"
+                f"{index} expected heading stage {stage}"
+            )
+
+
+def check_torch_location(cells) -> None:
+    expected = expected_topology()
+    preflight_index = next(
+        (i for i, (_, stage) in enumerate(expected) if stage == GPU_PREFLIGHT_STAGE and i and expected[i][0] == "code"),
+        None,
+    )
+    torch_pattern = re.compile(r"(?m)^\s*(import torch|from torch)\b")
+    for index, cell in enumerate(cells):
+        if cell["cell_type"] != "code":
+            continue
+        source = "".join(cell.get("source", []))
+        if torch_pattern.search(source) and index != preflight_index:
+            fail(
+                "torch imported outside GPU hardware-preflight cell "
+                f"(cell @{index}); allowed only in stage {GPU_PREFLIGHT_STAGE}"
+            )
+
+
+def check_heartbeat(code_cells, code_text) -> None:
+    if HEARTBEAT_MARKER not in code_text:
+        fail(f"missing {HEARTBEAT_MARKER} marker; long-running cells must be heartbeat-enabled")
+    helper_cells = [c for c in code_cells if "def run_cmd(" in "".join(c.get("source", []))]
+    if not helper_cells:
+        fail("missing long-command heartbeat helper (def run_cmd(...))")
+    helper_ok = any(
+        HEARTBEAT_MARKER in "".join(c.get("source", []))
+        and "heartbeat(" in "".join(c.get("source", []))
+        for c in helper_cells
+    )
+    if not helper_ok:
+        fail("run_cmd helper must emit heartbeats through the [HEARTBEAT] heartbeat function")
+
+
+def check_clean_state(code_cells) -> None:
+    for index, cell in enumerate(code_cells):
+        if cell.get("execution_count") is not None:
+            fail(f"code cell @{index} must have execution_count=null in the source notebook")
+        if cell.get("outputs"):
+            fail(f"code cell @{index} must have outputs=[] in the source notebook")
+
+
+def check_no_asserts(cells) -> None:
+    assert_pattern = re.compile(r"(?m)^\s*(?:elif\s+)?(?:if[^\n]*:\s*)?\s*assert\b|(?:^|\n)\s*assert\b")
+    for index, cell in enumerate(cells):
+        if cell["cell_type"] != "code":
+            continue
+        source = "".join(cell.get("source", []))
+        if re.search(r"(?m)^\s*assert\b", source):
+            fail(
+                f"code cell @{index} uses an operational 'assert' safety gate; "
+                "convert to an explicit raise so it survives python -O"
+            )
+
+
 def main():
     nb_path = Path(sys.argv[1]) if len(sys.argv) > 1 else NOTEBOOK
     nb = json.loads(nb_path.read_text())
     cells = nb["cells"]
-
-    if len(cells) < 39:
-        fail(f"expected >= 39 cells, got {len(cells)}")
 
     md_cells = [c for c in cells if c["cell_type"] == "markdown"]
     code_cells = [c for c in cells if c["cell_type"] == "code"]
@@ -62,6 +162,10 @@ def main():
             fail(f"code cell @{index} has no preceding markdown")
         if not source.strip():
             fail(f"code cell @{index} is empty")
+
+    check_topology(cells, md_cells, code_cells)
+    check_torch_location(cells)
+    check_no_asserts(cells)
 
     full_md = [("".join(c.get("source", [])) or "") for c in md_cells]
     combined_md = "\n".join(full_md)
@@ -111,7 +215,31 @@ def main():
     if "[PASS]" not in combined_all:
         fail("no [PASS] markers found")
 
-    print("[INFO] valid notebook cells: %d code, %d markdown" % (len(code_cells), len(md_cells)))
+    check_heartbeat(code_cells, code_text)
+    check_clean_state(code_cells)
+
+    if nb.get("nbformat") != 4:
+        fail(f"nbformat must be 4, got {nb.get('nbformat')}")
+    metadata = nb.get("metadata", {})
+    kernelspec = metadata.get("kernelspec", {})
+    language_info = metadata.get("language_info", {})
+    if kernelspec.get("language") != "python" or kernelspec.get("name") != "python3":
+        fail(f"kernel must be Python 3 (python3), got {kernelspec}")
+    if language_info.get("name") != "python":
+        fail(f"language_info must be python, got {language_info}")
+    runtime_target = metadata.get("runtime_target")
+    production_claim = metadata.get("production_claim")
+    if not runtime_target or not str(runtime_target).strip():
+        fail("metadata runtime_target missing or empty")
+    if not production_claim or not str(production_claim).strip():
+        fail("metadata production_claim missing or empty")
+
+    print(f"[INFO] valid notebook cells: {len(code_cells)} code, {len(md_cells)} markdown")
+    print(f"[INFO] exact topology (stage 00 intro + 01-19 markdown/code pairs) enforced")
+    print("[INFO] torch restricted to the GPU hardware-preflight cell")
+    print(f"[INFO] {HEARTBEAT_MARKER} heartbeat helper enforced")
+    print("[INFO] execution-clean state and no operational assert gates enforced")
+    print("[INFO] metadata authority enforced (python3 kernel, runtime_target, production_claim)")
     print("[INFO] every code cell compiles (CPU-safe compile, no execution)")
     print("[INFO] stages 00-19 present in order, bilingual markdown before every code cell")
     print("[INFO] no forbidden labels, no CPU fallback, no model imports at cell scope")

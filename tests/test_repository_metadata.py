@@ -21,6 +21,8 @@ def test_github_ci_runs_cpu_safe_validation() -> None:
         "python -m pytest -q",
         "python scripts/validate_bilingual_docs.py",
         "python scripts/validate_notebook.py",
+        "python scripts/validate_docs_links.py",
+        "python scripts/validate_repository.py",
         "python -m pip check",
     ]
     for item in required:
