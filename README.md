@@ -98,7 +98,7 @@ Expected repository-level validation includes a passing CPU-safe pytest suite pl
 ## Publication state
 
 - GPU public-candidate qualification: complete
-- CPU-safe validation: 331/331 PASS (clean-HOME hermetic, 2026-09-16 v11-hardening closeout)
+- CPU-safe validation: 474/474 PASS (clean-HOME hermetic, 2026-09-16 v11-hardening closeout)
 - Bilingual source documentation: included
 - Public notebook structural validation: complete
 - Public notebook live `Run All`: pending

@@ -98,7 +98,7 @@ Validation ở mức repository bao gồm bộ pytest CPU-safe PASS và:
 ## Trạng thái publication
 
 - GPU public-candidate qualification: hoàn tất
-- CPU-safe validation: 331/331 PASS (hermetic clean-HOME, 2026-09-16 v11-hardening closeout)
+- CPU-safe validation: 474/474 PASS (hermetic clean-HOME, 2026-09-16 v11-hardening closeout)
 - Source documentation song ngữ: đã có
 - Public notebook structural validation: hoàn tất
 - Public notebook live `Run All`: đang chờ

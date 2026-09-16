@@ -4,13 +4,13 @@
 
 This document records the CPU-safe source-validation scope. It does not substitute for GPU acceptance; the separate T4 x2 qualification has already completed successfully for the frozen public candidate.
 
-Record date: 2026-09-16. v11-hardening closeout at HEAD: the counts below reflect the repository validation state at this commit (331 tests).
+Record date: 2026-09-16. v11-hardening closeout at HEAD: the counts below reflect the repository validation state at this commit (474 tests).
 
 ## Result
 
 ```text
 Python compile        PASS
-Repository tests      331/331 PASS (clean-HOME hermetic)
+Repository tests      474/474 PASS (clean-HOME hermetic)
 Ruff lint/format      PASS
 mypy server+scripts   PASS
 ShellCheck            PASS (scripts/*.sh)
