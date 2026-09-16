@@ -3,6 +3,25 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
+# shellcheck source-path=scripts
+# shellcheck source=lifecycle_common.sh
+# shellcheck disable=SC1091  # lifecycle_common.sh lives in scripts/ and is followed via shellcheck -x in CI
+source ./scripts/lifecycle_common.sh
+
+# shellcheck disable=SC2317  # trap EXIT target; reached indirectly on every exit
+cleanup_tx() {
+  local rc=$?
+  if (( rc != 0 )); then
+    echo "[INFO] lifecycle start failed rc=$rc; stopping only processes started by this invocation"
+    cleanup_new_services
+    echo "[INFO] lifecycle failure cleanup complete; original rc=$rc preserved"
+    exit "$rc"
+  fi
+  echo "[INFO] lifecycle start committed; pre-existing and newly started services remain resident"
+  exit 0
+}
+trap cleanup_tx EXIT
+
 REST_PORT="${MAGE_FLOW_REST_PORT:-8090}"
 T2I_PORT="${MAGE_FLOW_T2I_INTERNAL_PORT:-8101}"
 EDIT_PORT="${MAGE_FLOW_EDIT_INTERNAL_PORT:-8102}"
@@ -24,9 +43,19 @@ fi
 
 python scripts/runtime_config.py validate-token --value="$MAGE_FLOW_API_TOKEN"
 
-./scripts/start_t2i.sh
+T2I_BEFORE_PID="$(cat .runtime/t2i.pid 2>/dev/null || true)"
+bash scripts/start_t2i.sh
+T2I_AFTER_PID="$(cat .runtime/t2i.pid 2>/dev/null || true)"
+if [[ -n "$T2I_AFTER_PID" && "$T2I_BEFORE_PID" != "$T2I_AFTER_PID" ]]; then
+  record_new_service .runtime/t2i.pid scripts/stop_t2i.sh
+fi
 
-./scripts/start_edit.sh
+EDIT_BEFORE_PID="$(cat .runtime/edit.pid 2>/dev/null || true)"
+bash scripts/start_edit.sh
+EDIT_AFTER_PID="$(cat .runtime/edit.pid 2>/dev/null || true)"
+if [[ -n "$EDIT_AFTER_PID" && "$EDIT_BEFORE_PID" != "$EDIT_AFTER_PID" ]]; then
+  record_new_service .runtime/edit.pid scripts/stop_edit.sh
+fi
 
 if [[ -f .runtime/server.pid ]]; then
   if python scripts/process_identity.py check \
@@ -49,6 +78,8 @@ nohup python -m uvicorn server.app:app \
   --port "$REST_PORT" \
   > .runtime/server.log 2>&1 &
 echo $! > .runtime/server.pid
+record_new_service .runtime/server.pid scripts/stop.sh
 echo "[INFO] pid=$(cat .runtime/server.pid)"
 echo '[PASS] REST_COORDINATOR_START_REQUESTED'
 echo '[INFO] Overall /ready becomes true only after both GPU workers report ready.'
+exit 0

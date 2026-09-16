@@ -6,12 +6,14 @@ if [[ -f .runtime/edit.pid ]]; then
   EDIT_PORT="${MAGE_FLOW_EDIT_INTERNAL_PORT:-8102}"
   python scripts/runtime_config.py validate-port \
     --name MAGE_FLOW_EDIT_INTERNAL_PORT --value "$EDIT_PORT"
+  MODEL_PATH="$(python scripts/runtime_config.py resolve-model-path --kind edit)"
   bash scripts/stop_process.sh \
     --pid-file .runtime/edit.pid \
     --kind edit_worker \
     --project-root "$PROJECT_ROOT" \
     --port "$EDIT_PORT" \
-    --device cuda:1
+    --device cuda:1 \
+    --model-path "$MODEL_PATH"
 else
   echo '[PASS] EDIT_WORKER_ALREADY_STOPPED'
 fi
