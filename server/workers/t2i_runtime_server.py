@@ -12,7 +12,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-
 MODEL_NAME = "mage-flow-turbo"
 REQUIRED_DEVICE = "cuda:0"
 MAX_BODY_BYTES = 64 * 1024
@@ -84,14 +83,14 @@ def validate_generation_payload(payload: Any) -> dict[str, Any]:
     }
 
 
-def image_to_data_url(image) -> str:
+def image_to_data_url(image: Any) -> str:
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
     return f"data:image/png;base64,{encoded}"
 
 
-def validate_gpu_contract(device: str):
+def validate_gpu_contract(device: str) -> tuple[Any, list[str]]:
     if device != REQUIRED_DEVICE:
         raise RuntimeError(f"T2I worker must use {REQUIRED_DEVICE}; got {device}")
 
@@ -115,7 +114,7 @@ class RuntimeState:
     def __init__(self, model_path: str, device: str):
         self.model_path = os.path.realpath(model_path)
         self.device = device
-        self.pipeline = None
+        self.pipeline: Any = None
         self.ready = False
         self.gpu_names: list[str] = []
         self.generate_lock = threading.Lock()
@@ -153,6 +152,7 @@ class RuntimeState:
         self.pipeline.device = self.device
 
         from mage_flow.models.modules._attn_backend import set_attn_backend
+
         set_attn_backend("sdpa")
         log("INFO", "attention backend set to sdpa (flash-attn not installed)")
 
@@ -172,16 +172,16 @@ class RuntimeState:
             f"size={request['width']}x{request['height']} device={self.device}",
         )
         with Heartbeat("t2i_generate"):
-                images = self.pipeline.generate(
-                    [request["prompt"]],
-                    neg_prompts=[" "],
-                    seeds=[request["seed"]],
-                    heights=[request["height"]],
-                    widths=[request["width"]],
-                    steps=request["steps"],
-                    cfg=1.0,
-                    prompt_template="mage-flow",
-                )
+            images = self.pipeline.generate(
+                [request["prompt"]],
+                neg_prompts=[" "],
+                seeds=[request["seed"]],
+                heights=[request["height"]],
+                widths=[request["width"]],
+                steps=request["steps"],
+                cfg=1.0,
+                prompt_template="mage-flow",
+            )
         if not isinstance(images, list) or len(images) != 1 or images[0] is None:
             raise RuntimeError("MageFlowPipeline.generate returned an unexpected result")
 
@@ -205,7 +205,7 @@ class RuntimeState:
 class Handler(BaseHTTPRequestHandler):
     server_version = "MageFlowT2IRuntime/0.1"
 
-    def log_message(self, format: str, *args) -> None:
+    def log_message(self, format: str, *args: object) -> None:
         log("HTTP", format % args)
 
     @property

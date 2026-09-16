@@ -15,9 +15,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 def validate_public_token(token: str) -> str:
     """Enforce the public start contract for configured tokens (fail closed)."""
     if len(token) < MIN_PUBLIC_TOKEN_LENGTH:
-        raise ValueError(
-            f"API token must be at least {MIN_PUBLIC_TOKEN_LENGTH} characters"
-        )
+        raise ValueError(f"API token must be at least {MIN_PUBLIC_TOKEN_LENGTH} characters")
     if not token.strip():
         raise ValueError("API token must not be whitespace-only")
     if "\n" in token or "\x00" in token:

@@ -25,9 +25,7 @@ def test_docs_links_validator_passes_offline():
 def test_docs_links_validator_does_not_fail_on_remote_urls():
     root = ROOT
     remote_docs = [
-        p
-        for p in root.rglob("*.md")
-        if ".git" not in p.parts and "https://" in p.read_text(encoding="utf-8")
+        p for p in root.rglob("*.md") if ".git" not in p.parts and "https://" in p.read_text(encoding="utf-8")
     ]
     assert remote_docs, "expected at least one doc with a remote link"
     assert _run().returncode == 0

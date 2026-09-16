@@ -33,15 +33,10 @@ def test_matching_commit_passes(tmp_path):
     repo.mkdir()
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
     subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test User"], check=True)
-    subprocess.run(
-        ["git", "-C", str(repo), "config", "user.email", "test@example.invalid"], check=True
-    )
+    subprocess.run(["git", "-C", str(repo), "config", "user.email", "test@example.invalid"], check=True)
     subprocess.run(["git", "-C", str(repo), "commit", "--allow-empty", "-q", "-m", "seed"], check=True)
     commit = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"]).decode().strip()
-    script = (
-        textwrap.dedent(GATE_SNIPPET)
-        + f"EXPECTED_MAGE_COMMIT='{commit}'\ncheck_gate '{repo}'\n"
-    )
+    script = textwrap.dedent(GATE_SNIPPET) + f"EXPECTED_MAGE_COMMIT='{commit}'\ncheck_gate '{repo}'\n"
     result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
     assert result.returncode == 0
     assert result.stdout.strip() == "PASS"
@@ -49,10 +44,7 @@ def test_matching_commit_passes(tmp_path):
 
 def test_wrong_commit_fails(tmp_path):
     expected = "abc123def456"
-    script = (
-        textwrap.dedent(GATE_SNIPPET)
-        + f"EXPECTED_MAGE_COMMIT='{expected}'\ncheck_gate '{tmp_path}'\n"
-    )
+    script = textwrap.dedent(GATE_SNIPPET) + f"EXPECTED_MAGE_COMMIT='{expected}'\ncheck_gate '{tmp_path}'\n"
     result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
     assert result.returncode != 0
     assert "FAIL" in result.stdout + result.stderr
@@ -95,8 +87,8 @@ def test_orchestrator_uses_fail_closed_gate():
 
 def test_expected_mage_commit_is_immutable_project_constant():
     script = (ROOT / "scripts" / "run_public_candidate.sh").read_text(encoding="utf-8")
-    assert "EXPECTED_MAGE_COMMIT=\"76bec2bb3818863f470de7e867c2dc7f1d0bfd83\"" in script
-    assert "EXPECTED_MAGE_COMMIT=\"${EXPECTED_MAGE_COMMIT:-" not in script
+    assert 'EXPECTED_MAGE_COMMIT="76bec2bb3818863f470de7e867c2dc7f1d0bfd83"' in script
+    assert 'EXPECTED_MAGE_COMMIT="${EXPECTED_MAGE_COMMIT:-' not in script
     assert "EXPECTED_MAGE_COMMIT:-" not in script
 
 
@@ -161,7 +153,5 @@ def test_reused_shell_token_permission_is_corrected_to_0600(tmp_path):
 
 def test_orchestrator_passes_model_path_to_service_health_cli():
     script = (ROOT / "scripts" / "run_public_candidate.sh").read_text(encoding="utf-8")
-    assert (
-        'python scripts/service_health.py "$url" "$model" "$device" "$model_path"' in script
-    )
+    assert 'python scripts/service_health.py "$url" "$model" "$device" "$model_path"' in script
     assert 'is_endpoint_healthy "$url" "$model" "$device" "$model_path"' in script

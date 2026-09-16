@@ -3,15 +3,12 @@ from __future__ import annotations
 import io
 import threading
 import time
+from typing import ClassVar
 
 import pytest
 from PIL import Image
-
 from server.worker_contract import (
     OUTPUT_DATA_URL_PREFIX,
-    WorkerResponseViolation,
-    validate_edit_worker_response,
-    validate_t2i_worker_response,
 )
 
 AUTH_TOKEN = "kaggle-demo-test-token-0123456789abcdef0123456789abcdef"
@@ -28,7 +25,6 @@ def _tiny_png_bytes() -> bytes:
 
 def test_auth_missing_credentials_is_401_with_challenge(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -49,7 +45,6 @@ def test_auth_missing_credentials_is_401_with_challenge(monkeypatch):
 )
 def test_auth_malformed_credentials_are_401(monkeypatch, header):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -59,7 +54,6 @@ def test_auth_malformed_credentials_are_401(monkeypatch, header):
 
 def test_auth_invalid_token_is_401_not_403(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -73,7 +67,6 @@ def test_auth_invalid_token_is_401_not_403(monkeypatch):
 
 def test_auth_unconfigured_token_is_503(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     monkeypatch.delenv("MAGE_FLOW_API_TOKEN", raising=False)
@@ -86,9 +79,8 @@ def test_auth_unconfigured_token_is_503(monkeypatch):
 
 def test_auth_weak_configured_token_is_503_fail_closed(monkeypatch):
     from fastapi.testclient import TestClient
-    from server.auth import MIN_PUBLIC_TOKEN_LENGTH
-
     from server.app import app
+    from server.auth import MIN_PUBLIC_TOKEN_LENGTH
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", "short-token")
     client = TestClient(app)
@@ -99,7 +91,6 @@ def test_auth_weak_configured_token_is_503_fail_closed(monkeypatch):
 
 def test_openapi_documents_bearer_security():
     import fastapi
-
     from server.app import app
 
     schema = fastapi.FastAPI.openapi(app)
@@ -120,7 +111,6 @@ def test_openapi_documents_bearer_security():
 
 def test_api_responses_carry_no_store_and_nosniff(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -151,7 +141,6 @@ def test_api_responses_carry_no_store_and_nosniff(monkeypatch):
 )
 def test_strict_generation_request_rejects_invalid_bodies(monkeypatch, body):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -165,13 +154,12 @@ def test_strict_generation_request_rejects_invalid_bodies(monkeypatch, body):
 
 def test_qualified_generation_request_unchanged(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     class _ReadyT2IWorker:
         ready = True
         device = "cuda:0"
-        captured = {}
+        captured: ClassVar[dict] = {}
 
         def generate(self, **kwargs):
             _ReadyT2IWorker.captured = kwargs
@@ -217,7 +205,6 @@ def test_qualified_generation_request_unchanged(monkeypatch):
 )
 def test_generation_response_model_constraints(field, value):
     from pydantic import ValidationError
-
     from server.schemas import GenerationResponse
 
     payload = {
@@ -239,7 +226,6 @@ def test_generation_response_model_constraints(field, value):
 @pytest.mark.parametrize("field,value", [("seed", -1), ("elapsed_seconds", -0.1), ("output", "")])
 def test_edit_response_model_constraints(field, value):
     from pydantic import ValidationError
-
     from server.schemas import EditResponse
 
     payload = {
@@ -261,7 +247,6 @@ def test_edit_response_model_constraints(field, value):
 
 def test_health_remains_responsive_while_edit_worker_blocked(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     entered = threading.Event()
@@ -319,7 +304,6 @@ def test_health_remains_responsive_while_edit_worker_blocked(monkeypatch):
 
 def test_second_t2i_request_while_busy_gets_429(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     entered = threading.Event()
@@ -378,7 +362,6 @@ def test_second_t2i_request_while_busy_gets_429(monkeypatch):
 
 def test_second_edit_request_while_busy_gets_429(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     entered = threading.Event()
@@ -437,7 +420,6 @@ def test_second_edit_request_while_busy_gets_429(monkeypatch):
 
 def test_t2i_and_edit_lanes_run_concurrently(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     entered = threading.Event()
@@ -513,7 +495,6 @@ def test_t2i_and_edit_lanes_run_concurrently(monkeypatch):
 
 def test_gate_releases_on_worker_exception(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     class _FlakyT2IWorker:
@@ -560,7 +541,6 @@ def test_gate_releases_on_worker_exception(monkeypatch):
 
 def test_invalid_request_rejected_before_gate_admission(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     class _TrackingT2IWorker:
@@ -608,7 +588,6 @@ def test_invalid_request_rejected_before_gate_admission(monkeypatch):
 
 def test_worker_contract_violation_maps_to_sanitized_502(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     class _BadT2IWorker:
@@ -635,7 +614,6 @@ def test_worker_contract_violation_maps_to_sanitized_502(monkeypatch):
 
 def test_502_detail_does_not_leak_internal_diagnostics(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     class _LeakingT2IWorker:
@@ -644,8 +622,7 @@ def test_502_detail_does_not_leak_internal_diagnostics(monkeypatch):
 
         def generate(self, **kwargs):
             raise RuntimeError(
-                "internal request failed at http://127.0.0.1:8101 "
-                "model /kaggle/input/secret/path token abc123"
+                "internal request failed at http://127.0.0.1:8101 model /kaggle/input/secret/path token abc123"
             )
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -669,7 +646,6 @@ def test_502_detail_does_not_leak_internal_diagnostics(monkeypatch):
 
 def test_edit_contract_violation_maps_to_sanitized_502(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     class _BadEditWorker:

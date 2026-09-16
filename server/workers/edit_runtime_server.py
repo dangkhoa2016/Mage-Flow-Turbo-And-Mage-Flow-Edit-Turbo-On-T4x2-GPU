@@ -22,7 +22,6 @@ if str(_PACKAGE_ROOT) not in sys.path:
 
 from server.images import ImageValidationError, decode_validated_worker_image  # noqa: E402
 
-
 MODEL_NAME = "mage-flow-edit-turbo"
 REQUIRED_DEVICE = "cuda:1"
 MAX_BODY_BYTES = 16 * 1024 * 1024
@@ -35,10 +34,7 @@ POLICY_EDIT_MAX_SIZE = os.environ.get("MAGE_FLOW_EDIT_MAX_SIZE", "1024")
 def resolve_edit_max_size(value: str) -> int:
     """Resolve the public Edit max-size policy to the frozen value 1024."""
     if value != "1024":
-        raise ValueError(
-            "MAGE_FLOW_EDIT_MAX_SIZE must resolve to the frozen public profile value 1024; "
-            f"got {value!r}"
-        )
+        raise ValueError(f"MAGE_FLOW_EDIT_MAX_SIZE must resolve to the frozen public profile value 1024; got {value!r}")
     return int(value)
 
 
@@ -76,14 +72,14 @@ def log(level: str, message: str) -> None:
     print(f"[{level}] {message}", flush=True)
 
 
-def image_to_data_url(image) -> str:
+def image_to_data_url(image: Any) -> str:
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
     return f"data:image/png;base64,{encoded}"
 
 
-def decode_image_bytes(image_bytes: bytes):
+def decode_image_bytes(image_bytes: bytes) -> Any:
     """Validate raw image bytes against the decoded-image resource contract."""
     if not image_bytes:
         raise ValueError("image payload must not be empty")
@@ -122,7 +118,7 @@ def validate_edit_payload(payload: Any) -> dict[str, Any]:
     return {"prompt": prompt, "seed": seed, "image_bytes": image_bytes}
 
 
-def validate_gpu_contract(device: str):
+def validate_gpu_contract(device: str) -> tuple[Any, list[str]]:
     if device != REQUIRED_DEVICE:
         raise RuntimeError(f"Edit worker must use {REQUIRED_DEVICE}; got {device}")
 
@@ -146,7 +142,7 @@ class RuntimeState:
     def __init__(self, model_path: str, device: str):
         self.model_path = os.path.realpath(model_path)
         self.device = device
-        self.pipeline = None
+        self.pipeline: Any = None
         self.ready = False
         self.gpu_names: list[str] = []
         self.edit_lock = threading.Lock()
@@ -186,6 +182,7 @@ class RuntimeState:
         self.pipeline.device = self.device
 
         from mage_flow.models.modules._attn_backend import set_attn_backend
+
         set_attn_backend("sdpa")
         log("INFO", "attention backend set to sdpa (flash-attn not installed)")
 
@@ -206,17 +203,17 @@ class RuntimeState:
             f"device={self.device} source_size={image.size}",
         )
         with Heartbeat("edit_generate"):
-                images = self.pipeline.edit(
-                    [request["prompt"]],
-                    [image],
-                    neg_prompts=[" "],
-                    seeds=[request["seed"]],
-                    steps=EDIT_STEPS,
-                    cfg=EDIT_CFG,
-                    prompt_template=PROMPT_TEMPLATE,
-                    vl_cond_long_edge=VL_COND_LONG_EDGE,
-                    max_size=EDIT_MAX_SIZE,
-                )
+            images = self.pipeline.edit(
+                [request["prompt"]],
+                [image],
+                neg_prompts=[" "],
+                seeds=[request["seed"]],
+                steps=EDIT_STEPS,
+                cfg=EDIT_CFG,
+                prompt_template=PROMPT_TEMPLATE,
+                vl_cond_long_edge=VL_COND_LONG_EDGE,
+                max_size=EDIT_MAX_SIZE,
+            )
         if not isinstance(images, list) or len(images) != 1 or images[0] is None:
             raise RuntimeError("MageFlowPipeline.edit returned an unexpected result")
 
@@ -240,7 +237,7 @@ class RuntimeState:
 class Handler(BaseHTTPRequestHandler):
     server_version = "MageFlowEditRuntime/0.1"
 
-    def log_message(self, format: str, *args) -> None:
+    def log_message(self, format: str, *args: object) -> None:
         log("HTTP", format % args)
 
     @property

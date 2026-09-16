@@ -175,18 +175,14 @@ def check_process(
     if not os.path.isdir(f"/proc/{pid}"):
         raise ProcessIdentityError(f"PID {pid} is not running (/proc/{pid} missing)")
     argv = read_cmdline(pid)
-    violations = argv_matches_signature(
-        argv, kind, port=port, device=device, model_path=model_path
-    )
+    violations = argv_matches_signature(argv, kind, port=port, device=device, model_path=model_path)
     if violations:
         raise ProcessIdentityError(f"PID {pid} identity mismatch: {'; '.join(violations)}")
     if project_root is not None:
         expected_cwd = os.path.realpath(project_root)
         actual_cwd = read_cwd(pid)
         if actual_cwd != expected_cwd:
-            raise ProcessIdentityError(
-                f"PID {pid} cwd is {actual_cwd!r}, expected {expected_cwd!r}"
-            )
+            raise ProcessIdentityError(f"PID {pid} cwd is {actual_cwd!r}, expected {expected_cwd!r}")
 
 
 def _urlopen_json(url: str, *, headers: dict[str, str] | None = None, timeout: float = 2.0) -> dict:
@@ -217,13 +213,9 @@ def verify_worker_health(
             f"worker on {url} reports pid={data.get('pid')!r}, expected {pid} (PID reuse or wrong process)"
         )
     if data.get("model") != model:
-        raise ProcessIdentityError(
-            f"worker on {url} reports model={data.get('model')!r}, expected {model!r}"
-        )
+        raise ProcessIdentityError(f"worker on {url} reports model={data.get('model')!r}, expected {model!r}")
     if data.get("device") != device:
-        raise ProcessIdentityError(
-            f"worker on {url} reports device={data.get('device')!r}, expected {device!r}"
-        )
+        raise ProcessIdentityError(f"worker on {url} reports device={data.get('device')!r}, expected {device!r}")
     reported_path = data.get("model_path")
     if reported_path is None or os.path.realpath(reported_path) != os.path.realpath(model_path):
         raise ProcessIdentityError(
@@ -261,12 +253,15 @@ def verify_coordinator_authenticated(url: str, *, token_file: str | None, token_
             f"coordinator on {url} reports project={data.get('project')!r}, expected {PROJECT_NAME!r}"
         )
     if data.get("cpu_fallback") is not False:
-        raise ProcessIdentityError(f"coordinator on {url} is not the GPU-only identity (cpu_fallback={data.get('cpu_fallback')!r})")
+        raise ProcessIdentityError(
+            f"coordinator on {url} is not the GPU-only identity (cpu_fallback={data.get('cpu_fallback')!r})"
+        )
     t2i = data.get("t2i", {})
     edit = data.get("edit", {})
     if t2i.get("device") != "cuda:0" or edit.get("device") != "cuda:1":
         raise ProcessIdentityError(
-            f"coordinator on {url} reports incompatible GPU routing (t2i={t2i.get('device')!r} edit={edit.get('device')!r})"
+            f"coordinator on {url} reports incompatible GPU routing "
+            f"(t2i={t2i.get('device')!r} edit={edit.get('device')!r})"
         )
 
 

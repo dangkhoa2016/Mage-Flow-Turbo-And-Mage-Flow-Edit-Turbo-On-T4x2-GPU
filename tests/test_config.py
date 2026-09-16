@@ -3,10 +3,9 @@ from __future__ import annotations
 import math
 
 import pytest
-
 from server.config import (
-    ConfigError,
     MAX_REQUEST_TIMEOUT_SECONDS,
+    ConfigError,
     parse_tcp_port,
     parse_timeout_seconds,
     validate_loopback_http_url,

@@ -1,11 +1,10 @@
-import os
 import asyncio
 import io
+from typing import ClassVar
 
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from PIL import Image
-
 from server.app import MAX_PUBLIC_UPLOAD_BYTES, app
 from server.schemas import EditResponse
 
@@ -14,107 +13,107 @@ AUTH_TOKEN = "kaggle-demo-test-token-0123456789abcdef0123456789abcdef"
 
 def test_health_is_public_minimal_liveness():
     client = TestClient(app)
-    response = client.get('/health')
+    response = client.get("/health")
     assert response.status_code == 200
-    assert response.json()['status'] == 'ok'
+    assert response.json()["status"] == "ok"
 
 
 def test_ready_requires_authentication(monkeypatch):
-    monkeypatch.setenv('MAGE_FLOW_API_TOKEN', AUTH_TOKEN)
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     client = TestClient(app)
-    assert client.get('/ready').status_code == 401
+    assert client.get("/ready").status_code == 401
 
 
 def test_ready_is_fail_closed_before_workers_load(monkeypatch):
-    monkeypatch.setenv('MAGE_FLOW_API_TOKEN', AUTH_TOKEN)
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     client = TestClient(app)
-    response = client.get('/ready', headers={'Authorization': f'Bearer {AUTH_TOKEN}'})
+    response = client.get("/ready", headers={"Authorization": f"Bearer {AUTH_TOKEN}"})
     assert response.status_code == 200
     data = response.json()
-    assert data['ready'] is False
-    assert data['status'] == 'not_ready'
+    assert data["ready"] is False
+    assert data["status"] == "not_ready"
 
 
 def test_info_requires_authentication(monkeypatch):
-    monkeypatch.setenv('MAGE_FLOW_API_TOKEN', AUTH_TOKEN)
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     client = TestClient(app)
-    assert client.get('/v1/info').status_code == 401
-    response = client.get('/v1/info', headers={'Authorization': f'Bearer {AUTH_TOKEN}'})
+    assert client.get("/v1/info").status_code == 401
+    response = client.get("/v1/info", headers={"Authorization": f"Bearer {AUTH_TOKEN}"})
     assert response.status_code == 200
-    assert response.json()['t2i']['device'] == 'cuda:0'
-    assert response.json()['edit']['device'] == 'cuda:1'
+    assert response.json()["t2i"]["device"] == "cuda:0"
+    assert response.json()["edit"]["device"] == "cuda:1"
 
 
 def test_generation_is_fail_closed_until_worker_ready(monkeypatch):
-    monkeypatch.setenv('MAGE_FLOW_API_TOKEN', AUTH_TOKEN)
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     client = TestClient(app)
     response = client.post(
-        '/v1/images/generations',
-        headers={'Authorization': f'Bearer {AUTH_TOKEN}'},
-        json={'prompt': 'test'},
+        "/v1/images/generations",
+        headers={"Authorization": f"Bearer {AUTH_TOKEN}"},
+        json={"prompt": "test"},
     )
     assert response.status_code == 503
-    assert response.json()['detail'] == 'T2I worker is not ready'
+    assert response.json()["detail"] == "T2I worker is not ready"
 
 
 class _ReadyT2IWorker:
     ready = True
-    device = 'cuda:0'
+    device = "cuda:0"
 
     def generate(self, **kwargs):
         return {
-            'id': 'img_test',
-            'status': 'completed',
-            'model': 'mage-flow-turbo',
-            'device': 'cuda:0',
-            'seed': kwargs['seed'],
-            'width': kwargs['width'],
-            'height': kwargs['height'],
-            'elapsed_seconds': 1.0,
-            'output': 'data:image/png;base64,abc',
+            "id": "img_test",
+            "status": "completed",
+            "model": "mage-flow-turbo",
+            "device": "cuda:0",
+            "seed": kwargs["seed"],
+            "width": kwargs["width"],
+            "height": kwargs["height"],
+            "elapsed_seconds": 1.0,
+            "output": "data:image/png;base64,abc",
         }
 
 
 def test_generation_success_with_ready_worker(monkeypatch):
-    monkeypatch.setenv('MAGE_FLOW_API_TOKEN', AUTH_TOKEN)
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     old = app.state.t2i_worker
     app.state.t2i_worker = _ReadyT2IWorker()
     try:
         client = TestClient(app)
         response = client.post(
-            '/v1/images/generations',
-            headers={'Authorization': f'Bearer {AUTH_TOKEN}'},
-            json={'prompt': 'test', 'seed': 42, 'steps': 4, 'width': 1024, 'height': 1024},
+            "/v1/images/generations",
+            headers={"Authorization": f"Bearer {AUTH_TOKEN}"},
+            json={"prompt": "test", "seed": 42, "steps": 4, "width": 1024, "height": 1024},
         )
         assert response.status_code == 200
         data = response.json()
-        assert data['device'] == 'cuda:0'
-        assert data['output'].startswith('data:image/png;base64,')
+        assert data["device"] == "cuda:0"
+        assert data["output"].startswith("data:image/png;base64,")
     finally:
         app.state.t2i_worker = old
 
 
 class _FailingT2IWorker:
     ready = True
-    device = 'cuda:0'
+    device = "cuda:0"
 
     def generate(self, **kwargs):
-        raise RuntimeError('boom')
+        raise RuntimeError("boom")
 
 
 def test_generation_maps_worker_runtime_error_to_502(monkeypatch):
-    monkeypatch.setenv('MAGE_FLOW_API_TOKEN', AUTH_TOKEN)
+    monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
     old = app.state.t2i_worker
     app.state.t2i_worker = _FailingT2IWorker()
     try:
         client = TestClient(app)
         response = client.post(
-            '/v1/images/generations',
-            headers={'Authorization': f'Bearer {AUTH_TOKEN}'},
-            json={'prompt': 'test'},
+            "/v1/images/generations",
+            headers={"Authorization": f"Bearer {AUTH_TOKEN}"},
+            json={"prompt": "test"},
         )
         assert response.status_code == 502
-        assert 'T2I worker request failed' in response.json()['detail']
+        assert "T2I worker request failed" in response.json()["detail"]
     finally:
         app.state.t2i_worker = old
 
@@ -208,7 +207,7 @@ def test_edit_valid_within_limit_reaches_worker():
     class _GoodEditWorker:
         ready = True
         device = "cuda:1"
-        called_with = {}
+        called_with: ClassVar[dict] = {}
 
         def edit(self, *, image_bytes, prompt, seed):
             self.called_with = {"image_bytes": image_bytes, "prompt": prompt, "seed": seed}

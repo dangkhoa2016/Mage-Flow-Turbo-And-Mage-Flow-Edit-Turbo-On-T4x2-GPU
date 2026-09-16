@@ -2,11 +2,9 @@ import base64
 import io
 import json
 import sys
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
 from server.workers.edit import (
     EditWorkerClient,
     EditWorkerConfig,
@@ -20,7 +18,7 @@ from server.workers.edit_runtime_server import (
     validate_edit_payload,
     validate_gpu_contract,
 )
-from server.workers.t2i import build_t2i_worker_command, T2IWorkerConfig
+from server.workers.t2i import T2IWorkerConfig, build_t2i_worker_command
 
 AUTH_TOKEN = "kaggle-demo-test-token-0123456789abcdef0123456789abcdef"
 
@@ -269,7 +267,17 @@ def test_worker_rejects_non_loopback_bind(monkeypatch):
     monkeypatch.setattr(
         sys,
         "argv",
-        ["edit_runtime_server", "--host", "0.0.0.0", "--port", "8102", "--model-path", "/models/edit", "--device", "cuda:1"],
+        [
+            "edit_runtime_server",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "8102",
+            "--model-path",
+            "/models/edit",
+            "--device",
+            "cuda:1",
+        ],
     )
     with pytest.raises(SystemExit, match="localhost"):
         main()
@@ -308,7 +316,6 @@ class _FailingEditWorker:
 
 def test_coordinator_503_when_edit_unavailable(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -330,7 +337,6 @@ def test_coordinator_503_when_edit_unavailable(monkeypatch):
 
 def test_coordinator_routing_when_edit_ready(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -355,7 +361,6 @@ def test_coordinator_routing_when_edit_ready(monkeypatch):
 
 def test_coordinator_maps_edit_runtime_error_to_502(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -377,7 +382,6 @@ def test_coordinator_maps_edit_runtime_error_to_502(monkeypatch):
 
 def test_coordinator_edit_requires_image_file_and_returns_422(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -392,7 +396,6 @@ def test_coordinator_edit_requires_image_file_and_returns_422(monkeypatch):
 
 def test_coordinator_edit_rejects_empty_image_file_with_400(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -414,7 +417,6 @@ def test_coordinator_edit_rejects_empty_image_file_with_400(monkeypatch):
 
 def test_coordinator_edit_rejects_oversized_upload_with_413(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import MAX_PUBLIC_UPLOAD_BYTES, app
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -437,7 +439,6 @@ def test_coordinator_edit_rejects_oversized_upload_with_413(monkeypatch):
 
 def test_coordinator_edit_rejects_unsupported_media_type_with_415(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -460,10 +461,14 @@ def test_coordinator_edit_rejects_unsupported_media_type_with_415(monkeypatch):
 def test_edit_t2i_timeout_defaults_are_consistent():
     from server.workers.edit import (
         DEFAULT_REQUEST_TIMEOUT_SECONDS as EDIT_TIMEOUT,
+    )
+    from server.workers.edit import (
         EditWorkerConfig,
     )
     from server.workers.t2i import (
         DEFAULT_REQUEST_TIMEOUT_SECONDS as T2I_TIMEOUT,
+    )
+    from server.workers.t2i import (
         T2IWorkerConfig,
     )
 
@@ -487,8 +492,8 @@ def test_edit_and_t2i_ports_are_disjoint(tmp_path):
     t2i_port = t2i_cmd[t2i_cmd.index("--port") + 1]
     assert edit_port == "8102"
     assert t2i_port == "8101"
-    assert "8101" not in edit_cmd[edit_cmd.index("--port"):]
-    assert "8102" not in t2i_cmd[t2i_cmd.index("--port"):]
+    assert "8101" not in edit_cmd[edit_cmd.index("--port") :]
+    assert "8102" not in t2i_cmd[t2i_cmd.index("--port") :]
 
 
 class _TrackingReadyEditWorker:
@@ -514,7 +519,6 @@ class _TrackingReadyEditWorker:
 
 def test_coordinator_rejects_empty_edit_prompt(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -537,7 +541,6 @@ def test_coordinator_rejects_empty_edit_prompt(monkeypatch):
 
 def test_coordinator_rejects_whitespace_edit_prompt(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -561,7 +564,6 @@ def test_coordinator_rejects_whitespace_edit_prompt(monkeypatch):
 
 def test_coordinator_rejects_tab_newline_edit_prompt(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -585,7 +587,6 @@ def test_coordinator_rejects_tab_newline_edit_prompt(monkeypatch):
 
 def test_coordinator_rejects_whitespace_edit_prompt_before_readiness(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)

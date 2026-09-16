@@ -12,6 +12,7 @@ Offline checks:
 Usage:
     python scripts/validate_repository.py [--root DIR]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -62,17 +63,14 @@ def tracked_files(root: Path) -> list[str]:
             for p in root.rglob("*")
             if p.is_file() and ".git" not in p.parts
         )
-    out = subprocess.check_output(
-        ["git", "-C", str(root), "ls-files"], text=True
-    )
+    out = subprocess.check_output(["git", "-C", str(root), "ls-files"], text=True)
     return sorted(line for line in out.splitlines() if line.strip())
 
 
 def is_secret_like_path(path: str) -> bool:
     parts = path.split("/")
     return any(
-        part in {"token", "secret", "api_token", "secrets.json", ".env"}
-        or part.startswith("api_token")
+        part in {"token", "secret", "api_token", "secrets.json", ".env"} or part.startswith("api_token")
         for part in parts
     )
 
@@ -90,6 +88,35 @@ def check_hygiene(root: Path) -> list[str]:
     for path in MANDATORY_PATHS:
         if not (root / path).is_file():
             errors.append(f"mandatory file missing: {path}")
+    return errors
+
+
+def check_text_files(root: Path) -> list[str]:
+    errors: list[str] = []
+    for rel in tracked_files(root):
+        path = root / rel
+        try:
+            data = path.read_bytes()
+        except OSError as exc:
+            errors.append(f"cannot read tracked file {rel}: {exc}")
+            continue
+        if b"\x00" in data[:8192]:
+            continue  # binary; not a normal text file
+        try:
+            data.decode("utf-8")
+        except UnicodeDecodeError:
+            errors.append(f"tracked text file is not valid UTF-8: {rel}")
+            continue
+        if data and not data.endswith(b"\n"):
+            errors.append(f"tracked text file missing final newline: {rel}")
+        if rel.endswith(".sh"):
+            if b"\r\n" in data:
+                errors.append(f"tracked shell script contains CRLF: {rel}")
+            try:
+                if not (path.stat().st_mode & 0o111):
+                    errors.append(f"tracked shell script not executable: {rel}")
+            except OSError as exc:
+                errors.append(f"cannot stat {rel}: {exc}")
     return errors
 
 
@@ -139,7 +166,7 @@ def main() -> int:
     parser.add_argument("--root", type=Path, default=ROOT)
     args = parser.parse_args()
     root = args.root.resolve()
-    errors = sorted(set(check_hygiene(root) + check_project_state(root)))
+    errors = sorted(set(check_hygiene(root) + check_text_files(root) + check_project_state(root)))
     if errors:
         for error in errors:
             print(f"[FAIL] {error}")

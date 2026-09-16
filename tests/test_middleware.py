@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from server.middleware import (
     DEFAULT_REQUEST_BODY_LIMIT_BYTES,
     MAX_EDIT_REQUEST_BODY_BYTES,
@@ -76,9 +74,7 @@ def test_body_at_limit_reaches_the_application_unchanged():
             if not message.get("more_body"):
                 break
         captured["body"] = received
-        await send(
-            {"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"text/plain")]}
-        )
+        await send({"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"text/plain")]})
         await send({"type": "http.response.body", "body": b"ok"})
 
     messages = _run(downstream, _http_scope(content_length=len(body)), [body])
@@ -96,9 +92,7 @@ def test_chunked_body_over_default_limit_is_truncated_and_413():
             if not message.get("more_body"):
                 break
         captured["body"] = received
-        await send(
-            {"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"text/plain")]}
-        )
+        await send({"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"text/plain")]})
         await send({"type": "http.response.body", "body": b"ok"})
 
     captured = {}
@@ -119,9 +113,7 @@ def test_routes_without_route_limit_use_small_default():
             message = await receive()
             if not message.get("more_body"):
                 break
-        await send(
-            {"type": "http.response.start", "status": 204, "headers": [(b"content-type", b"text/plain")]}
-        )
+        await send({"type": "http.response.start", "status": 204, "headers": [(b"content-type", b"text/plain")]})
         await send({"type": "http.response.body", "body": b""})
 
     scope = _http_scope(method="POST", path="/v1/some-other-route", content_length=2048)
@@ -152,7 +144,6 @@ def test_non_http_scopes_are_passthrough():
 
 def test_app_generation_route_rejects_body_over_64kib(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -168,7 +159,6 @@ def test_app_generation_route_rejects_body_over_64kib(monkeypatch):
 
 def test_app_body_limiter_leaves_public_health_untouched(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)

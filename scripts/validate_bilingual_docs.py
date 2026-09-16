@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 """Validate bilingual Markdown pairing in the working tree and Git history."""
+
 from __future__ import annotations
 
 import re
@@ -24,16 +25,10 @@ def counterpart(path: str) -> str:
 
 def tracked_markdown() -> list[str]:
     try:
-        out = subprocess.check_output(
-            ["git", "-C", str(ROOT), "ls-files", "--", "*.md"], text=True
-        )
+        out = subprocess.check_output(["git", "-C", str(ROOT), "ls-files", "--", "*.md"], text=True)
         return sorted(line for line in out.splitlines() if line.strip())
     except (subprocess.CalledProcessError, FileNotFoundError):
-        return sorted(
-            str(p.relative_to(ROOT)).replace("\\", "/")
-            for p in ROOT.rglob("*.md")
-            if ".git" not in p.parts
-        )
+        return sorted(str(p.relative_to(ROOT)).replace("\\", "/") for p in ROOT.rglob("*.md") if ".git" not in p.parts)
 
 
 # require structural parity (P1-20): heading-level sequence, fenced code
@@ -50,11 +45,7 @@ _NUMBERED_RE = re.compile(r"^\s*\d+\.\s+")
 def structural_signature(text: str) -> tuple:
     lines = text.splitlines()
     headings = tuple(_HEADING_RE.findall(text))
-    fences = tuple(
-        (len(m.group("f")), m.group("tag"))
-        for line in lines
-        if (m := _FENCE_RE.match(line))
-    )
+    fences = tuple((len(m.group("f")), m.group("tag")) for line in lines if (m := _FENCE_RE.match(line)))
     bullets = len(_BULLET_RE.findall(text))
     numbered = len(_NUMBERED_RE.findall(text))
     return headings, fences, bullets, numbered
@@ -72,9 +63,7 @@ def validate_parity(path: str, text: str, pair_path: str) -> list[str]:
     )
     for label, actual, expected in labels:
         if actual != expected:
-            errors.append(
-                f"structural parity mismatch EN/VI in {path}: {label} differs"
-            )
+            errors.append(f"structural parity mismatch EN/VI in {path}: {label} differs")
     return errors
 
 
@@ -127,17 +116,13 @@ def validate_history() -> list[str]:
     if not (ROOT / ".git").exists():
         return []
     errors: list[str] = []
-    commits = subprocess.check_output(
-        ["git", "-C", str(ROOT), "rev-list", "--reverse", "HEAD"], text=True
-    ).splitlines()
+    commits = subprocess.check_output(["git", "-C", str(ROOT), "rev-list", "--reverse", "HEAD"], text=True).splitlines()
     for commit in commits:
         changed = changed_markdown(commit)
         for path in sorted(changed):
             pair = counterpart(path)
             if pair not in changed:
-                errors.append(
-                    f"commit {commit[:12]} changes {path} without paired {pair}"
-                )
+                errors.append(f"commit {commit[:12]} changes {path} without paired {pair}")
     return errors
 
 

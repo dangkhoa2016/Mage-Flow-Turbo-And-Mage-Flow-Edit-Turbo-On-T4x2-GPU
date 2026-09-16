@@ -1,21 +1,19 @@
 import http.server
 import json
-import os
 import subprocess
 import sys
 import threading
 from pathlib import Path
 
 import pytest
-
 from scripts.process_identity import (
     ProcessIdentityError,
     argv_matches_signature,
     check_process,
     parse_strict_pid,
+    read_pid_file,
     verify_coordinator_authenticated,
     verify_worker_health,
-    read_pid_file,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -180,9 +178,14 @@ def test_health_pid_mismatch_is_pid_reuse():
         "model_path": "/models/t2i",
         "pid": 424242,
     }
-    with patch("urllib.request.urlopen", return_value=_FakeResponse(payload)):
-        with pytest.raises(ProcessIdentityError):
-            verify_worker_health("http://127.0.0.1:8101", 1234, model="mage-flow-turbo", device="cuda:0", model_path="/models/t2i")
+    with patch("urllib.request.urlopen", return_value=_FakeResponse(payload)), pytest.raises(ProcessIdentityError):
+        verify_worker_health(
+            "http://127.0.0.1:8101",
+            1234,
+            model="mage-flow-turbo",
+            device="cuda:0",
+            model_path="/models/t2i",
+        )
 
 
 def test_health_identity_match():
@@ -197,16 +200,27 @@ def test_health_identity_match():
         "pid": 1234,
     }
     with patch("urllib.request.urlopen", return_value=_FakeResponse(payload)):
-        verify_worker_health("http://127.0.0.1:8101", 1234, model="mage-flow-turbo", device="cuda:0", model_path="/models/t2i")
+        verify_worker_health(
+            "http://127.0.0.1:8101",
+            1234,
+            model="mage-flow-turbo",
+            device="cuda:0",
+            model_path="/models/t2i",
+        )
 
 
 def test_health_not_ready_yet_rejected():
     from unittest.mock import patch
 
     payload = {"status": "not_ready", "ready": False, "pid": 1234}
-    with patch("urllib.request.urlopen", return_value=_FakeResponse(payload)):
-        with pytest.raises(ProcessIdentityError):
-            verify_worker_health("http://127.0.0.1:8101", 1234, model="mage-flow-turbo", device="cuda:0", model_path="/models/t2i")
+    with patch("urllib.request.urlopen", return_value=_FakeResponse(payload)), pytest.raises(ProcessIdentityError):
+        verify_worker_health(
+            "http://127.0.0.1:8101",
+            1234,
+            model="mage-flow-turbo",
+            device="cuda:0",
+            model_path="/models/t2i",
+        )
 
 
 # ---------------- authenticated coordinator reuse (P0-13) ----------------
@@ -276,13 +290,15 @@ def test_coordinator_reuse_passes_with_current_token(tmp_path):
 def test_coordinator_reuse_rejected_with_old_token(tmp_path):
     token_file = tmp_path / "token"
     token_file.write_text("old-token-0123456789abcdef0123456789abcdef")
-    with _CoordinatorServer(_coordinator_payload(), "current-token-0123456789abcdef0123456789abcdef") as server:
-        with pytest.raises(ProcessIdentityError):
-            verify_coordinator_authenticated(
-                f"http://127.0.0.1:{server.port}",
-                token_file=str(token_file),
-                token_env=None,
-            )
+    with (
+        _CoordinatorServer(_coordinator_payload(), "current-token-0123456789abcdef0123456789abcdef") as server,
+        pytest.raises(ProcessIdentityError),
+    ):
+        verify_coordinator_authenticated(
+            f"http://127.0.0.1:{server.port}",
+            token_file=str(token_file),
+            token_env=None,
+        )
 
 
 def test_coordinator_reuse_rejected_when_project_mismatches(tmp_path):
@@ -291,13 +307,12 @@ def test_coordinator_reuse_rejected_when_project_mismatches(tmp_path):
     token_file.write_text(token)
     payload = _coordinator_payload()
     payload["project"] = "some-other-project"
-    with _CoordinatorServer(payload, token) as server:
-        with pytest.raises(ProcessIdentityError):
-            verify_coordinator_authenticated(
-                f"http://127.0.0.1:{server.port}",
-                token_file=str(token_file),
-                token_env=None,
-            )
+    with _CoordinatorServer(payload, token) as server, pytest.raises(ProcessIdentityError):
+        verify_coordinator_authenticated(
+            f"http://127.0.0.1:{server.port}",
+            token_file=str(token_file),
+            token_env=None,
+        )
 
 
 # ---------------- CLI behaviour ----------------
