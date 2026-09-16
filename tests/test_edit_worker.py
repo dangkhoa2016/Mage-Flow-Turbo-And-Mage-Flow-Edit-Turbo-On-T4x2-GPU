@@ -279,7 +279,7 @@ def test_worker_rejects_non_loopback_bind(monkeypatch):
             "cuda:1",
         ],
     )
-    with pytest.raises(SystemExit, match="localhost"):
+    with pytest.raises(SystemExit, match=r"127\.0\.0\.1"):
         main()
 
 

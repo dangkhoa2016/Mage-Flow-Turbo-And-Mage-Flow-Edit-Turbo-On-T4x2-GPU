@@ -6,7 +6,10 @@ API-token contracts used by the shell orchestrators and the notebook:
 - the runtime directory must be a real directory (not a symlink) owned by the
   current user with mode ``0700``;
 - the API token file must be a regular file (not a symlink) owned by the current
-  user with mode ``0600``, a link count of exactly one, and non-empty content;
+  user with mode ``0600``, a link count of exactly one, and content satisfying
+  the shared token-value contract in ``server.token_contract`` (same authority
+  the coordinator auth middleware enforces, so the store can never report valid
+  a token the server would reject);
 - new tokens are created with restrictive mode from the first write (``O_EXCL``
   with ``0o600``), never written wide and chmodded afterwards.
 
@@ -22,6 +25,14 @@ import secrets
 import stat
 import sys
 from pathlib import Path
+
+# Allow direct CLI execution (``python scripts/token_store.py``) to import the
+# shared authorities from the project package.
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
+from server.token_contract import TokenContractError, validate_public_token_value  # noqa: E402
 
 DEFAULT_DIR_MODE = 0o700
 DEFAULT_TOKEN_MODE = 0o600
@@ -92,18 +103,27 @@ def enforce_token_file(path: str | os.PathLike[str]) -> None:
 
 
 def _read_token(path: str) -> str:
+    """Read and validate a persisted token value against the shared authority.
+
+    The raw file content is validated without stripping: a persisted value that
+    carries leading/trailing whitespace or an embedded newline is ambiguous with
+    the exact value the server compares, so it fails closed instead of being
+    silently normalized.
+    """
     try:
-        token = Path(path).read_text(encoding="utf-8").strip()
+        raw = Path(path).read_text(encoding="utf-8")
     except OSError as exc:
         raise TokenStoreError(f"cannot read token file {path}: {exc}") from exc
-    if not token:
-        raise TokenStoreError(f"token file {path} is empty")
-    return token
+    try:
+        return validate_public_token_value(raw)
+    except TokenContractError as exc:
+        raise TokenStoreError(f"token file {path} contains an invalid persisted token value: {exc}") from exc
 
 
 def _create_token_secure(path: str) -> str:
     """Create a new token with restrictive mode from the very first write."""
     token = secrets.token_urlsafe(32)
+    validate_public_token_value(token)
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     try:
         fd = os.open(path, flags, DEFAULT_TOKEN_MODE)

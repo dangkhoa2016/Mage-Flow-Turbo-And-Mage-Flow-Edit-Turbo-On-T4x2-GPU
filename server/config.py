@@ -16,9 +16,17 @@ import re
 from typing import Any
 from urllib.parse import urlsplit
 
-LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+# The authoritative publication loopback contract is IPv4 ``127.0.0.1`` only,
+# matching the ``AF_INET`` binding of the ``ThreadingHTTPServer`` worker runtime.
+# ``localhost`` is not accepted because its resolution is platform-dependent and
+# can silently point at ::1, which the IPv4 server cannot bind; ``::1`` is
+# rejected so the runtime never advertises an IPv6 capability it does not have.
+LOOPBACK_HOSTS = {"127.0.0.1"}
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 3600.0
 MAX_REQUEST_TIMEOUT_SECONDS = 7200.0
+# Conservative shared ceiling for shell lifecycle timeout values (start-readiness
+# waits and stop grace intervals). Values above this bound fail closed.
+MAX_LIFECYCLE_TIMEOUT_SECONDS = 7200
 
 
 class ConfigError(ValueError):
@@ -65,8 +73,7 @@ def validate_loopback_http_url(value: Any, *, name: str) -> str:
     if not 1 <= port <= 65535:
         raise ConfigError(f"{name} port must be in 1..65535, got {port}")
 
-    display_host = f"[{host}]" if host == "::1" else host
-    return f"http://{display_host}:{port}"
+    return f"http://{host}:{port}"
 
 
 def parse_timeout_seconds(
@@ -94,6 +101,39 @@ def parse_timeout_seconds(
     if parsed > MAX_REQUEST_TIMEOUT_SECONDS:
         raise ConfigError(f"{name} must not exceed {MAX_REQUEST_TIMEOUT_SECONDS} seconds, got {parsed!r}")
     return parsed
+
+
+def parse_lifecycle_timeout_seconds(
+    value: Any,
+    *,
+    name: str,
+    default: float = MAX_LIFECYCLE_TIMEOUT_SECONDS,
+    upper_bound: float = MAX_LIFECYCLE_TIMEOUT_SECONDS,
+) -> int:
+    """Parse a lifecycle timeout as a positive, bounded integer number of seconds.
+
+    Shell lifecycle loops (start-readiness deadlines and stop grace intervals)
+    are built on ``SECONDS`` arithmetic with integer values, so the lifecycle
+    contract is deliberately stricter than floating request timeouts: the value
+    must be a whole-number second count (no fractions), positive, finite, and at
+    most ``upper_bound``. ``None`` resolves to ``default``. Invalid or
+    unreasonably large values raise ``ConfigError`` instead of being clamped.
+    """
+    if value is None:
+        value = default
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        raise ConfigError(f"{name} must be an integer number of seconds") from None
+    if math.isnan(parsed) or math.isinf(parsed):
+        raise ConfigError(f"{name} must be finite, got {value!r}")
+    if parsed != int(parsed):
+        raise ConfigError(f"{name} must be a whole number of seconds, got {value!r}")
+    if parsed <= 0:
+        raise ConfigError(f"{name} must be positive, got {parsed!r}")
+    if parsed > upper_bound:
+        raise ConfigError(f"{name} must not exceed {upper_bound} seconds, got {parsed!r}")
+    return int(parsed)
 
 
 _PORT_DECIMAL = re.compile(r"^\d+$")

@@ -326,8 +326,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    if args.host not in {"127.0.0.1", "localhost", "::1"}:
-        raise SystemExit("[FAIL] internal Edit worker must bind to localhost only")
+    if args.host != "127.0.0.1":
+        raise SystemExit("[FAIL] internal Edit worker must bind to 127.0.0.1 only")
 
     print("=" * 60, flush=True)
     log("STAGE", "Mage-Flow Edit Turbo runtime worker")

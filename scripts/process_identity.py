@@ -36,7 +36,9 @@ KIND_T2I = "t2i_worker"
 KIND_EDIT = "edit_worker"
 KIND_COORD = "coordinator"
 
-LOCALHOST_ARGS = {"127.0.0.1", "localhost", "::1"}
+# Runtime workers bind IPv4 loopback only; a process with any other --host value
+# (including the IPv6 loopback ``::1``) cannot match the runtime identity.
+LOCALHOST_ARGS = {"127.0.0.1"}
 
 EXPECTED_SCRIPT_TOKENS = {
     KIND_T2I: "server/workers/t2i_runtime_server.py",
