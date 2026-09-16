@@ -3,14 +3,13 @@ import hashlib
 from pathlib import Path
 
 import pytest
-
 from scripts.acceptance import LiveAcceptance
 
 
 def _tiny_png_bytes() -> bytes:
-    from PIL import Image
-
     import io
+
+    from PIL import Image
 
     buffer = io.BytesIO()
     Image.new("RGB", (16, 16), (10, 200, 90)).save(buffer, format="PNG")
@@ -18,9 +17,9 @@ def _tiny_png_bytes() -> bytes:
 
 
 def _tiny_jpeg_bytes() -> bytes:
-    from PIL import Image
-
     import io
+
+    from PIL import Image
 
     buffer = io.BytesIO()
     Image.new("RGB", (32, 32), (200, 20, 90)).save(buffer, format="JPEG")

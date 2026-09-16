@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
 
 BAR = "━" * 46
 
@@ -42,7 +42,7 @@ def stage_end(started_at: float, result: str) -> None:
 
 
 @contextmanager
-def timed_stage(number: str, name: str, result: str):
+def timed_stage(number: str, name: str, result: str) -> Iterator[float]:
     started_at = stage_start(number, name)
     try:
         yield started_at

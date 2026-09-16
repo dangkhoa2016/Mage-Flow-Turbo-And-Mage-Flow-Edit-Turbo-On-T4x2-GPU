@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from server.worker_contract import (
     OUTPUT_DATA_URL_PREFIX,
     WorkerResponseViolation,

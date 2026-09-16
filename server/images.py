@@ -61,9 +61,7 @@ def open_image_restricted(image_bytes: bytes) -> Image.Image:
     except Image.DecompressionBombWarning as exc:
         raise ImageValidationError("image triggers the decoded-pixel safety warning") from exc
     except Exception as exc:
-        raise ImageValidationError(
-            "image data is not a decodable supported image"
-        ) from exc
+        raise ImageValidationError("image data is not a decodable supported image") from exc
 
 
 def decode_validated_image(
@@ -89,9 +87,7 @@ def decode_validated_image(
     if declared_media_type is not None:
         expected_format = MEDIA_TYPE_TO_FORMAT[declared_media_type]
         if image.format != expected_format:
-            raise ImageValidationError(
-                "declared media type does not match the decoded image format"
-            )
+            raise ImageValidationError("declared media type does not match the decoded image format")
 
     width, height = image.size
     if width <= 0 or height <= 0:

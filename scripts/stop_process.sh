@@ -3,7 +3,7 @@
 #
 # Usage:
 #   stop_process.sh --pid-file FILE --kind t2i_worker|edit_worker|coordinator \
-#     --project-root ROOT [--port N] [--device D] [--model M] [--model-path MP]
+#     --project-root ROOT [--port N] [--device D] [--model-path MP]
 #
 # Behaviour:
 #   * reads the PID file with the strict shared guard (process_identity.py);
@@ -18,7 +18,6 @@ PID_FILE=""
 KIND=""
 PORT=""
 DEVICE=""
-MODEL=""
 MODEL_PATH=""
 TERM_GRACE_STEP=1
 TERM_GRACE_MAX="${MAGE_FLOW_STOP_TERM_GRACE_SECONDS:-20}"
@@ -30,7 +29,6 @@ while (( $# > 0 )); do
     --kind) KIND="$2"; shift 2;;
     --port) PORT="$2"; shift 2;;
     --device) DEVICE="$2"; shift 2;;
-    --model) MODEL="$2"; shift 2;;
     --model-path) MODEL_PATH="$2"; shift 2;;
     --project-root) CWD_ROOT="$2"; shift 2;;
     *) echo "[FAIL] unknown argument: $1" >&2; exit 1;;

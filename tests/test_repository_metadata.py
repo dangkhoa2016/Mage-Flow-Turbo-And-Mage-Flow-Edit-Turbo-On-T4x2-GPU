@@ -24,6 +24,17 @@ def test_github_ci_runs_cpu_safe_validation() -> None:
         "python scripts/validate_docs_links.py",
         "python scripts/validate_repository.py",
         "python -m pip check",
+        "ruff check .",
+        "ruff format --check .",
+        "mypy server scripts",
+        "bash -n scripts/*.sh",
+        "shellcheck scripts/*.sh",
+        "python -m build",
+        "python scripts/validate_build_artifacts.py",
+        "twine check dist/*",
+        "pip-audit -r requirements.txt",
+        "Validate YAML files parse",
+        "Clean-HOME representative pytest",
     ]
     for item in required:
         assert item in text

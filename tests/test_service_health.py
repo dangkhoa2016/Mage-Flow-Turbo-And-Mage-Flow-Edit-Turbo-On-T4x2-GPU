@@ -29,7 +29,13 @@ def test_health_identity_match():
     with patch(
         "urllib.request.urlopen",
         return_value=FakeResponse(
-            {"status": "ready", "ready": True, "model": "mage-flow-turbo", "device": "cuda:0", "model_path": "/models/t2i"}
+            {
+                "status": "ready",
+                "ready": True,
+                "model": "mage-flow-turbo",
+                "device": "cuda:0",
+                "model_path": "/models/t2i",
+            }
         ),
     ):
         assert check("http://127.0.0.1:8101", "mage-flow-turbo", "cuda:0", "/models/t2i") is True
@@ -39,7 +45,13 @@ def test_health_identity_mismatch_device():
     with patch(
         "urllib.request.urlopen",
         return_value=FakeResponse(
-            {"status": "ready", "ready": True, "model": "mage-flow-turbo", "device": "cuda:1", "model_path": "/models/t2i"}
+            {
+                "status": "ready",
+                "ready": True,
+                "model": "mage-flow-turbo",
+                "device": "cuda:1",
+                "model_path": "/models/t2i",
+            }
         ),
     ):
         assert check("http://127.0.0.1:8101", "mage-flow-turbo", "cuda:0", "/models/t2i") is False

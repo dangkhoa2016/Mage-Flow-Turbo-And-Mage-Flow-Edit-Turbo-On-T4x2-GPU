@@ -19,10 +19,12 @@ Checks (CPU-safe, no model load, no network):
   8. No forbidden internal labels, no CPU fallback, no model imports at cell
      scope, no heavy framework imports at import time.
 """
+
 import json
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 NOTEBOOK = ROOT / "notebooks" / "mage-flow-t4x2-production-rest-api-demo.ipynb"
@@ -32,14 +34,21 @@ EXPECTED_STAGES = tuple(f"{n:02d}" for n in range(20))
 EXPECTED_TOTAL_CELLS = 1 + 2 * (len(EXPECTED_STAGES) - 1)
 GPU_PREFLIGHT_STAGE = "03"
 HEARTBEAT_MARKER = "[HEARTBEAT]"
-FORBIDDEN_IMPORTS = ("import transformers", "from transformers",
-                     "import diffusers", "from diffusers",
-                     "import keras", "from keras",
-                     "import mage_flow", "from mage_flow",
-                     "import accelerate", "from accelerate",
-                     "import safetensors", "from safetensors")
-FORBIDDEN_CLASSES = ("MageFlowPipeline", "MageFlow", "DiffusionPipeline",
-                     "AutoPipeline", "StableDiffusionPipeline")
+FORBIDDEN_IMPORTS = (
+    "import transformers",
+    "from transformers",
+    "import diffusers",
+    "from diffusers",
+    "import keras",
+    "from keras",
+    "import mage_flow",
+    "from mage_flow",
+    "import accelerate",
+    "from accelerate",
+    "import safetensors",
+    "from safetensors",
+)
+FORBIDDEN_CLASSES = ("MageFlowPipeline", "MageFlow", "DiffusionPipeline", "AutoPipeline", "StableDiffusionPipeline")
 
 
 def fail(msg):
@@ -56,7 +65,11 @@ def expected_topology() -> list[tuple[str, str]]:
     return sequence
 
 
-def check_topology(cells, md_cells, code_cells) -> None:
+def check_topology(
+    cells: list[dict[str, Any]],
+    md_cells: list[dict[str, Any]],
+    code_cells: list[dict[str, Any]],
+) -> None:
     if len(cells) != EXPECTED_TOTAL_CELLS:
         fail(
             "stage sequence mismatch: expected exactly "
@@ -66,28 +79,21 @@ def check_topology(cells, md_cells, code_cells) -> None:
     if len(md_cells) != len(EXPECTED_STAGES):
         fail(f"stage sequence mismatch: expected {len(EXPECTED_STAGES)} markdown cells, got {len(md_cells)}")
     if len(code_cells) != len(EXPECTED_STAGES) - 1:
-        fail(
-            "stage sequence mismatch: expected "
-            f"{len(EXPECTED_STAGES) - 1} code cells, got {len(code_cells)}"
-        )
+        fail(f"stage sequence mismatch: expected {len(EXPECTED_STAGES) - 1} code cells, got {len(code_cells)}")
     expected = expected_topology()
-    for index, (cell, (cell_type, stage)) in enumerate(zip(cells, expected)):
+    for index, (cell, (cell_type, stage)) in enumerate(zip(cells, expected, strict=False)):
         if cell["cell_type"] != cell_type:
             fail(
-                f"stage sequence mismatch: cell @{index} expected {cell_type} "
-                f"(stage {stage}), got {cell['cell_type']}"
+                f"stage sequence mismatch: cell @{index} expected {cell_type} (stage {stage}), got {cell['cell_type']}"
             )
         if cell_type != "markdown":
             continue
         source = "".join(cell.get("source", []))
         if not re.match(rf"#+\s+{re.escape(stage)}\b", source.strip()):
-            fail(
-                "stage sequence mismatch: markdown cell @"
-                f"{index} expected heading stage {stage}"
-            )
+            fail(f"stage sequence mismatch: markdown cell @{index} expected heading stage {stage}")
 
 
-def check_torch_location(cells) -> None:
+def check_torch_location(cells: list[dict[str, Any]]) -> None:
     expected = expected_topology()
     preflight_index = next(
         (i for i, (_, stage) in enumerate(expected) if stage == GPU_PREFLIGHT_STAGE and i and expected[i][0] == "code"),
@@ -105,22 +111,21 @@ def check_torch_location(cells) -> None:
             )
 
 
-def check_heartbeat(code_cells, code_text) -> None:
+def check_heartbeat(code_cells: list[dict[str, Any]], code_text: str) -> None:
     if HEARTBEAT_MARKER not in code_text:
         fail(f"missing {HEARTBEAT_MARKER} marker; long-running cells must be heartbeat-enabled")
     helper_cells = [c for c in code_cells if "def run_cmd(" in "".join(c.get("source", []))]
     if not helper_cells:
         fail("missing long-command heartbeat helper (def run_cmd(...))")
     helper_ok = any(
-        HEARTBEAT_MARKER in "".join(c.get("source", []))
-        and "heartbeat(" in "".join(c.get("source", []))
+        HEARTBEAT_MARKER in "".join(c.get("source", [])) and "heartbeat(" in "".join(c.get("source", []))
         for c in helper_cells
     )
     if not helper_ok:
         fail("run_cmd helper must emit heartbeats through the [HEARTBEAT] heartbeat function")
 
 
-def check_clean_state(code_cells) -> None:
+def check_clean_state(code_cells: list[dict[str, Any]]) -> None:
     for index, cell in enumerate(code_cells):
         if cell.get("execution_count") is not None:
             fail(f"code cell @{index} must have execution_count=null in the source notebook")
@@ -128,8 +133,7 @@ def check_clean_state(code_cells) -> None:
             fail(f"code cell @{index} must have outputs=[] in the source notebook")
 
 
-def check_no_asserts(cells) -> None:
-    assert_pattern = re.compile(r"(?m)^\s*(?:elif\s+)?(?:if[^\n]*:\s*)?\s*assert\b|(?:^|\n)\s*assert\b")
+def check_no_asserts(cells: list[dict[str, Any]]) -> None:
     for index, cell in enumerate(cells):
         if cell["cell_type"] != "code":
             continue
@@ -169,8 +173,7 @@ def main():
 
     full_md = [("".join(c.get("source", [])) or "") for c in md_cells]
     combined_md = "\n".join(full_md)
-    combined_all = combined_md + "\n" + "\n".join(
-        "".join(c.get("source", [])) for c in code_cells)
+    combined_all = combined_md + "\n" + "\n".join("".join(c.get("source", [])) for c in code_cells)
 
     for label in FORBIDDEN_LABELS:
         if re.search(rf"\b{re.escape(label)}\b", combined_all):
@@ -184,10 +187,7 @@ def main():
         if first_heading:
             found_stages.append(first_heading.group(1))
     if found_stages != list(EXPECTED_STAGES):
-        fail(
-            "stage sequence mismatch: expected "
-            f"{list(EXPECTED_STAGES)}, found {found_stages}"
-        )
+        fail(f"stage sequence mismatch: expected {list(EXPECTED_STAGES)}, found {found_stages}")
 
     code_text = "\n".join("".join(c.get("source", [])) for c in code_cells)
     for imp in FORBIDDEN_IMPORTS:
@@ -235,7 +235,7 @@ def main():
         fail("metadata production_claim missing or empty")
 
     print(f"[INFO] valid notebook cells: {len(code_cells)} code, {len(md_cells)} markdown")
-    print(f"[INFO] exact topology (stage 00 intro + 01-19 markdown/code pairs) enforced")
+    print("[INFO] exact topology (stage 00 intro + 01-19 markdown/code pairs) enforced")
     print("[INFO] torch restricted to the GPU hardware-preflight cell")
     print(f"[INFO] {HEARTBEAT_MARKER} heartbeat helper enforced")
     print("[INFO] execution-clean state and no operational assert gates enforced")

@@ -1,10 +1,7 @@
-import io
 import json
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
 from server.workers.t2i import (
     T2IWorkerClient,
     T2IWorkerConfig,
@@ -166,22 +163,22 @@ def test_client_rejects_oversized_worker_response():
             return b"x" * (MAX_WORKER_RESPONSE_BYTES + 1)
 
     client = T2IWorkerClient(T2IWorkerConfig())
-    with patch("urllib.request.urlopen", return_value=BigResponse({"status": "completed"})):
-        with pytest.raises(RuntimeError, match="size bound"):
-            client.generate(prompt="cat", seed=42, steps=4, width=1024, height=1024)
+    with (
+        patch("urllib.request.urlopen", return_value=BigResponse({"status": "completed"})),
+        pytest.raises(RuntimeError, match="size bound"),
+    ):
+        client.generate(prompt="cat", seed=42, steps=4, width=1024, height=1024)
 
 
 def test_client_transport_timeout_normalized_to_runtime_error():
-    import socket
 
     client = T2IWorkerClient(T2IWorkerConfig())
 
     def timeout(*args, **kwargs):
-        raise socket.timeout("timed out")
+        raise TimeoutError("timed out")
 
-    with patch("urllib.request.urlopen", side_effect=timeout):
-        with pytest.raises(RuntimeError, match="unavailable"):
-            client.generate(prompt="cat", seed=42, steps=4, width=1024, height=1024)
+    with patch("urllib.request.urlopen", side_effect=timeout), pytest.raises(RuntimeError, match="unavailable"):
+        client.generate(prompt="cat", seed=42, steps=4, width=1024, height=1024)
 
 
 def test_client_socket_oserror_normalized_to_runtime_error():
@@ -190,18 +187,16 @@ def test_client_socket_oserror_normalized_to_runtime_error():
     def refused(*args, **kwargs):
         raise OSError("connection refused")
 
-    with patch("urllib.request.urlopen", side_effect=refused):
-        with pytest.raises(RuntimeError, match="unavailable"):
-            client.generate(prompt="cat", seed=42, steps=4, width=1024, height=1024)
+    with patch("urllib.request.urlopen", side_effect=refused), pytest.raises(RuntimeError, match="unavailable"):
+        client.generate(prompt="cat", seed=42, steps=4, width=1024, height=1024)
 
 
 def test_client_ready_false_on_transient_transport_error():
-    import socket
 
     client = T2IWorkerClient(T2IWorkerConfig())
 
     def timeout(*args, **kwargs):
-        raise socket.timeout("timed out")
+        raise TimeoutError("timed out")
 
     with patch("urllib.request.urlopen", side_effect=timeout):
         assert client.ready is False
@@ -229,7 +224,6 @@ class _ReadyT2IWorker:
 
 def test_coordinator_rejects_empty_t2i_prompt(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -251,7 +245,6 @@ def test_coordinator_rejects_empty_t2i_prompt(monkeypatch):
 
 def test_coordinator_rejects_whitespace_t2i_prompt(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)
@@ -273,7 +266,6 @@ def test_coordinator_rejects_whitespace_t2i_prompt(monkeypatch):
 
 def test_coordinator_rejects_tab_newline_t2i_prompt(monkeypatch):
     from fastapi.testclient import TestClient
-
     from server.app import app
 
     monkeypatch.setenv("MAGE_FLOW_API_TOKEN", AUTH_TOKEN)

@@ -26,6 +26,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import requests
 
@@ -62,14 +63,12 @@ class LiveAcceptance:
         self.headers = {"Authorization": f"Bearer {token}"}
         self.summary: dict = {"endpoints": {}}
 
-    def _get(self, path: str, *, authenticated: bool, headers: dict | None = None):
+    def _get(self, path: str, *, authenticated: bool, headers: dict | None = None) -> tuple[int, dict]:
         request_headers = self.headers if authenticated else {}
         if headers:
             request_headers = {**request_headers, **headers}
         try:
-            response = requests.get(
-                f"{self.base_url}{path}", headers=request_headers, timeout=10
-            )
+            response = requests.get(f"{self.base_url}{path}", headers=request_headers, timeout=10)
         except requests.RequestException:
             return -1, {}
         try:
@@ -134,8 +133,7 @@ class LiveAcceptance:
                 }
                 log(
                     "PASS",
-                    "/ready -> ready=true "
-                    f"(t2i={payload.get('t2i_ready')} edit={payload.get('edit_ready')})",
+                    f"/ready -> ready=true (t2i={payload.get('t2i_ready')} edit={payload.get('edit_ready')})",
                 )
                 return payload
             if payload:
@@ -144,15 +142,11 @@ class LiveAcceptance:
             if now - last_report >= 15:
                 log(
                     "HEARTBEAT",
-                    f"waiting /ready elapsed={int(now)}s "
-                    f"status={status} transient={transient_errors}",
+                    f"waiting /ready elapsed={int(now)}s status={status} transient={transient_errors}",
                 )
                 last_report = now
             time.sleep(3)
-        raise AssertionError(
-            f"/ready did not become true within {int(timeout)}s; "
-            f"last={last_payload or 'no response'}"
-        )
+        raise AssertionError(f"/ready did not become true within {int(timeout)}s; last={last_payload or 'no response'}")
 
     def _expect(self, actual: int, expected: int, label: str, checks: list[dict]) -> None:
         ok = actual == expected
@@ -191,8 +185,7 @@ class LiveAcceptance:
         self.summary["security_checks"] = checks
         if failures:
             raise AssertionError(
-                f"{len(failures)} security acceptance check(s) failed: "
-                + "; ".join(c["label"] for c in failures)
+                f"{len(failures)} security acceptance check(s) failed: " + "; ".join(c["label"] for c in failures)
             )
 
     def info(self) -> dict:
@@ -237,7 +230,7 @@ class LiveAcceptance:
 
     def t2i_generation(self) -> dict:
         stage("T2I public generation")
-        payload = {
+        payload: dict[str, Any] = {
             "prompt": "A tranquil mountain lake at sunrise, photorealistic landscape photography",
             "seed": 42,
             "steps": 4,
@@ -253,9 +246,7 @@ class LiveAcceptance:
         )
         wall = round(time.monotonic() - started, 3)
         if response.status_code != 200:
-            raise AssertionError(
-                f"generation returned {response.status_code}: {response.text[:500]}"
-            )
+            raise AssertionError(f"generation returned {response.status_code}: {response.text[:500]}")
         data = response.json()
         if data.get("status") != "completed":
             raise AssertionError(f"generation not completed: {data}")
@@ -344,8 +335,8 @@ class LiveAcceptance:
         self.wait_ready()
         self.security_cheap_checks()
         self.info()
-        t2i_result = self.t2i_generation()
-        edit_result = self.edit_generation()
+        self.t2i_generation()
+        self.edit_generation()
         self.summary["passed"] = True
         self.summary["completed_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         summary_path = self.output_dir / "acceptance-summary.json"

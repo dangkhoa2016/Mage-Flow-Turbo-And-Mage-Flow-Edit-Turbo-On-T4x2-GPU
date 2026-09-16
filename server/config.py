@@ -92,9 +92,7 @@ def parse_timeout_seconds(
     if parsed <= 0:
         raise ConfigError(f"{name} must be positive, got {parsed!r}")
     if parsed > MAX_REQUEST_TIMEOUT_SECONDS:
-        raise ConfigError(
-            f"{name} must not exceed {MAX_REQUEST_TIMEOUT_SECONDS} seconds, got {parsed!r}"
-        )
+        raise ConfigError(f"{name} must not exceed {MAX_REQUEST_TIMEOUT_SECONDS} seconds, got {parsed!r}")
     return parsed
 
 

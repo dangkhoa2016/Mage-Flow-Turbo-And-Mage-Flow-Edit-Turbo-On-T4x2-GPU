@@ -13,7 +13,8 @@ never fully read or stored.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 MAX_EDIT_REQUEST_BODY_BYTES = 9 * 1024 * 1024  # 9 MiB keeps safe multipart overhead
 MAX_T2I_REQUEST_BODY_BYTES = 64 * 1024  # 64 KiB JSON limits
@@ -81,7 +82,13 @@ class RequestBodyLimitMiddleware:
 
         declared = self._declared_content_length(scope)
         if declared is not None and declared > limit:
-            logger.warning("rejecting request %s %s: declared body %d > %d", scope.get("method"), scope.get("path"), declared, limit)
+            logger.warning(
+                "rejecting request %s %s: declared body %d > %d",
+                scope.get("method"),
+                scope.get("path"),
+                declared,
+                limit,
+            )
             await self._send_error(send, b'{"detail":"request body exceeds the configured limit"}')
             return
 
@@ -120,6 +127,4 @@ class RequestBodyLimitMiddleware:
             return
         finally:
             if rejected:
-                await self._send_error(
-                    send, b'{"detail":"request body exceeds the configured limit"}'
-                )
+                await self._send_error(send, b'{"detail":"request body exceeds the configured limit"}')

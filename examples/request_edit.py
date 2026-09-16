@@ -1,5 +1,6 @@
-from pathlib import Path
 import os
+from pathlib import Path
+
 import requests
 
 token = os.environ["MAGE_FLOW_API_TOKEN"]

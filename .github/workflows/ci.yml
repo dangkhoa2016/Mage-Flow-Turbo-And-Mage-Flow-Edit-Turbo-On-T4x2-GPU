@@ -65,3 +65,82 @@ jobs:
 
       - name: Compile Python sources
         run: python -m compileall -q server scripts examples
+
+  quality:
+    name: Static, packaging and security gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
+
+      - name: Install project, test and quality dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test,quality]"
+
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Ruff format check
+        run: ruff format --check .
+
+      - name: mypy static type check
+        run: mypy server scripts
+
+      - name: Shell syntax check
+        run: bash -n scripts/*.sh
+
+      - name: ShellCheck lifecycle scripts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends shellcheck
+          shellcheck scripts/*.sh
+
+      - name: Compile Python sources
+        run: python -m compileall -q server scripts examples
+
+      - name: Build wheel and sdist
+        run: python -m build
+
+      - name: Validate build artifacts
+        run: python scripts/validate_build_artifacts.py
+
+      - name: Package metadata check
+        run: twine check dist/*
+
+      - name: Dependency security audit
+        run: pip-audit -r requirements.txt
+
+      - name: Validate YAML files parse
+        run: |
+          python - <<'EOF'
+          import glob
+          import yaml
+          for path in glob.glob(".github/**/*.yml", recursive=True) + glob.glob(".github/**/*.yaml", recursive=True):
+              with open(path, encoding="utf-8") as handle:
+                  yaml.safe_load(handle)
+          print("YAML files parse cleanly")
+          EOF
+
+      - name: Clean-HOME representative pytest
+        run: |
+          clean_home="$RUNNER_TEMP/clean-home"
+          mkdir -p "$clean_home"
+          HOME="$clean_home" python -m pytest -q
+
+      - name: Validate installed dependencies
+        run: python -m pip check

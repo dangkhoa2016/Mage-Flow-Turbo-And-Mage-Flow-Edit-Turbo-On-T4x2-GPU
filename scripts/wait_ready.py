@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+
 import requests
 
 URL = "http://127.0.0.1:8090/ready"
@@ -18,12 +19,16 @@ while time.monotonic() - start < TIMEOUT:
     try:
         r = requests.get(URL, headers=headers, timeout=3)
         data = r.json()
-        print(f"[HEARTBEAT] elapsed={int(time.monotonic()-start)}s status={data.get('status')}", flush=True)
+        print(f"[HEARTBEAT] elapsed={int(time.monotonic() - start)}s status={data.get('status')}", flush=True)
         if r.ok and data.get("ready") is True:
             print("[PASS] REST_API_READY", flush=True)
             sys.exit(0)
     except Exception as exc:
-        print(f"[HEARTBEAT] elapsed={int(time.monotonic()-start)}s state=waiting detail={type(exc).__name__}", flush=True)
+        elapsed = int(time.monotonic() - start)
+        print(
+            f"[HEARTBEAT] elapsed={elapsed}s state=waiting detail={type(exc).__name__}",
+            flush=True,
+        )
     time.sleep(5)
 print("[FAIL] REST_API_READY_TIMEOUT", flush=True)
 sys.exit(1)

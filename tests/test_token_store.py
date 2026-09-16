@@ -5,7 +5,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from scripts.token_store import (
     TokenStoreError,
     enforce_directory,
