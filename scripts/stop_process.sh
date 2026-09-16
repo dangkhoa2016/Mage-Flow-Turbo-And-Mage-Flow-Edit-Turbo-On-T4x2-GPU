@@ -39,6 +39,21 @@ done
 [[ -n "$KIND" ]] || { echo "[FAIL] --kind is required" >&2; exit 1; }
 CWD_ROOT="${CWD_ROOT:-$PROJECT_ROOT}"
 
+python scripts/runtime_config.py validate-timeout \
+  --name MAGE_FLOW_STOP_TERM_GRACE_SECONDS \
+  --value "$TERM_GRACE_MAX" \
+  --default 20 \
+  --upper-bound 7200
+python scripts/runtime_config.py validate-timeout \
+  --name MAGE_FLOW_STOP_KILL_GRACE_SECONDS \
+  --value "$KILL_GRACE_MAX" \
+  --default 10 \
+  --upper-bound 7200
+if [[ -n "$PORT" ]]; then
+  python scripts/runtime_config.py validate-port \
+    --name MAGE_FLOW_STOP_PROCESS_PORT --value "$PORT"
+fi
+
 identity_check() {
   local extra=()
   [[ -n "$PORT" ]] && extra+=( --port "$PORT" )

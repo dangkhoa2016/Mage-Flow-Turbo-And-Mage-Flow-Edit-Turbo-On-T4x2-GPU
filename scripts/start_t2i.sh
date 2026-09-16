@@ -19,6 +19,9 @@ RUNTIME_PYTHON="$RUNTIME_ROOT/.venv/bin/python"
 PORT="${MAGE_FLOW_T2I_INTERNAL_PORT:-8101}"
 URL="http://127.0.0.1:${PORT}"
 
+python scripts/runtime_config.py validate-port \
+  --name MAGE_FLOW_T2I_INTERNAL_PORT --value "$PORT"
+
 mkdir -p .runtime
 
 printf '%s\n' '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
@@ -79,7 +82,13 @@ if [[ "$EXISTING" == "0" ]]; then
   echo "[INFO] pid=$(cat .runtime/t2i.pid)"
 fi
 
-DEADLINE=$((SECONDS + ${MAGE_FLOW_T2I_START_TIMEOUT_SECONDS:-900}))
+T2I_START_TIMEOUT="${MAGE_FLOW_T2I_START_TIMEOUT_SECONDS:-900}"
+python scripts/runtime_config.py validate-timeout \
+  --name MAGE_FLOW_T2I_START_TIMEOUT_SECONDS \
+  --value "$T2I_START_TIMEOUT" \
+  --default 900 \
+  --upper-bound 7200
+DEADLINE=$((SECONDS + T2I_START_TIMEOUT))
 LAST_REPORT=0
 while (( SECONDS < DEADLINE )); do
   if process_identity_check --health-url "$URL" --model mage-flow-turbo; then

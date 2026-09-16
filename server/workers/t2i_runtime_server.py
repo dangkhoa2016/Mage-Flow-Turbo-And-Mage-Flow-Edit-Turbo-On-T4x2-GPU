@@ -5,12 +5,29 @@ import base64
 import io
 import json
 import os
+import sys
 import threading
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+
+# Qualification wiring: expose the project package so the accepted GGUF safety
+# adapter (``server.safety``) and its audit wrapper are importable inside the
+# standalone runtime worker. Conditioning/diffusion code is untouched.
+_PACKAGE_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(_PACKAGE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PACKAGE_ROOT))
+
+from server.safety.wiring import (  # noqa: E402
+    clear_current_request_id,
+    install_and_audit_safety,
+    install_timing_probes,
+    set_current_request_id,
+    timing_report,
+)
+from server.workers.conditioning_offload import install_t2i_conditioning_offload  # noqa: E402
 
 MODEL_NAME = "mage-flow-turbo"
 REQUIRED_DEVICE = "cuda:0"
@@ -118,6 +135,8 @@ class RuntimeState:
         self.ready = False
         self.gpu_names: list[str] = []
         self.generate_lock = threading.Lock()
+        self.safety_adapter: Any = None
+        self.conditioning_offload: Any = None
 
     def load(self) -> None:
         model_dir = Path(self.model_path)
@@ -156,6 +175,11 @@ class RuntimeState:
         set_attn_backend("sdpa")
         log("INFO", "attention backend set to sdpa (flash-attn not installed)")
 
+        self.safety_adapter = install_and_audit_safety(self.pipeline, request_type="T2I")
+        log("PASS", "T2I_GGUF_SAFETY_INSTALLED backend=gguf")
+        install_timing_probes("T2I")
+        self.conditioning_offload = install_t2i_conditioning_offload(self.pipeline, log=log)
+
         self.ready = True
         log("PASS", f"T2I_WORKER_READY model={MODEL_NAME} device={self.device}")
 
@@ -172,22 +196,27 @@ class RuntimeState:
             f"size={request['width']}x{request['height']} device={self.device}",
         )
         with Heartbeat("t2i_generate"):
-            images = self.pipeline.generate(
-                [request["prompt"]],
-                neg_prompts=[" "],
-                seeds=[request["seed"]],
-                heights=[request["height"]],
-                widths=[request["width"]],
-                steps=request["steps"],
-                cfg=1.0,
-                prompt_template="mage-flow",
-            )
+            set_current_request_id(f"t2i_{request['seed']}")
+            try:
+                images = self.pipeline.generate(
+                    [request["prompt"]],
+                    neg_prompts=[" "],
+                    seeds=[request["seed"]],
+                    heights=[request["height"]],
+                    widths=[request["width"]],
+                    steps=request["steps"],
+                    cfg=1.0,
+                    prompt_template="mage-flow",
+                )
+            finally:
+                clear_current_request_id()
         if not isinstance(images, list) or len(images) != 1 or images[0] is None:
             raise RuntimeError("MageFlowPipeline.generate returned an unexpected result")
 
         image = images[0]
         width, height = image.size
         elapsed = time.monotonic() - started
+        timing_report("T2I")
         log("PASS", f"generation completed elapsed={elapsed:.3f}s actual_size={width}x{height}")
         return {
             "id": f"img_{uuid.uuid4().hex}",
@@ -234,6 +263,11 @@ class Handler(BaseHTTPRequestHandler):
                 "device": self.runtime.device,
                 "gpu_names": self.runtime.gpu_names[:2],
                 "model_path": self.runtime.model_path,
+                "conditioning_offload": (
+                    self.runtime.conditioning_offload.health_payload()
+                    if self.runtime.conditioning_offload is not None
+                    else {"mode": "uninitialized", "enabled": False}
+                ),
                 "pid": os.getpid(),
             },
         )
@@ -294,8 +328,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    if args.host not in {"127.0.0.1", "localhost", "::1"}:
-        raise SystemExit("[FAIL] internal T2I worker must bind to localhost only")
+    if args.host != "127.0.0.1":
+        raise SystemExit("[FAIL] internal T2I worker must bind to 127.0.0.1 only")
 
     print("=" * 60, flush=True)
     log("STAGE", "Mage-Flow Turbo T2I runtime worker")

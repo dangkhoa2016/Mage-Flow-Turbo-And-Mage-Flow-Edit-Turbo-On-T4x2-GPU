@@ -13,11 +13,16 @@ export MAGE_FLOW_EDIT_INTERNAL_URL="$EDIT_URL"
 
 python scripts/token_store.py prepare-dir .runtime
 
+python scripts/runtime_config.py validate-ports \
+  --rest "$REST_PORT" --t2i "$T2I_PORT" --edit "$EDIT_PORT"
+
 if [[ -z "${MAGE_FLOW_API_TOKEN:-}" ]]; then
   echo '[FAIL] MAGE_FLOW_API_TOKEN is not set'
   echo 'Suggested action / Hướng xử lý: export a strong temporary token before starting the coordinator.'
   exit 1
 fi
+
+python scripts/runtime_config.py validate-token --value="$MAGE_FLOW_API_TOKEN"
 
 ./scripts/start_t2i.sh
 

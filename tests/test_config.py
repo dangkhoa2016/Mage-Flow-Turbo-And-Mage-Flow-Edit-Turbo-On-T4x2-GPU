@@ -4,8 +4,10 @@ import math
 
 import pytest
 from server.config import (
+    MAX_LIFECYCLE_TIMEOUT_SECONDS,
     MAX_REQUEST_TIMEOUT_SECONDS,
     ConfigError,
+    parse_lifecycle_timeout_seconds,
     parse_tcp_port,
     parse_timeout_seconds,
     validate_loopback_http_url,
@@ -16,16 +18,11 @@ from server.workers.t2i import T2IWorkerConfig
 LOOPBACK_URLS = [
     "http://127.0.0.1:8101",
     "http://127.0.0.1:8101/",
-    "http://localhost:8102",
-    "http://localhost:8102/",
-    "http://[::1]:8102",
 ]
 
 
 def test_loopback_url_valid_and_normalized():
     assert validate_loopback_http_url("http://127.0.0.1:8101/", name="url") == "http://127.0.0.1:8101"
-    assert validate_loopback_http_url("http://localhost:8102", name="url") == "http://localhost:8102"
-    assert validate_loopback_http_url("http://[::1]:8102", name="url") == "http://[::1]:8102"
 
 
 @pytest.mark.parametrize(
@@ -36,6 +33,10 @@ def test_loopback_url_valid_and_normalized():
         "not a url",
         "https://127.0.0.1:8101",
         "http://0.0.0.0:8101",
+        "http://[::]:8101",
+        "http://[::1]:8101",
+        "http://localhost:8102",
+        "http://localhost:8102/",
         "http://example.com:8101",
         "http://192.168.1.10:8101",
         "http://10.0.0.5:8101",
@@ -79,6 +80,47 @@ def test_timeout_rejects_nonnumeric_type():
         parse_timeout_seconds(math.nan, name="x")
 
 
+def test_lifecycle_timeout_default_and_valid_override():
+    assert parse_lifecycle_timeout_seconds(None, name="t", default=900) == 900
+    assert parse_lifecycle_timeout_seconds("20", name="t", default=20) == 20
+    assert parse_lifecycle_timeout_seconds(7200, name="t", default=900) == 7200
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "0",
+        "-1",
+        "-20",
+        "nan",
+        "inf",
+        "-inf",
+        "abc",
+        "",
+        "1.5",
+        "   ",
+        str(MAX_LIFECYCLE_TIMEOUT_SECONDS + 1),
+    ],
+)
+def test_lifecycle_timeout_rejects_invalid(bad):
+    with pytest.raises(ConfigError):
+        parse_lifecycle_timeout_seconds(
+            bad,
+            name="MAGE_FLOW_T2I_START_TIMEOUT_SECONDS",
+            default=900,
+            upper_bound=MAX_LIFECYCLE_TIMEOUT_SECONDS,
+        )
+
+
+def test_lifecycle_timeout_rejects_non_integer_type():
+    with pytest.raises(ConfigError):
+        parse_lifecycle_timeout_seconds(1.5, name="t", default=900)
+    with pytest.raises(ConfigError):
+        parse_lifecycle_timeout_seconds(None, name="t", default="not-a-number")
+    with pytest.raises(ConfigError):
+        parse_lifecycle_timeout_seconds(math.inf, name="t", default=900)
+
+
 def test_port_parsing_accepts_valid():
     assert parse_tcp_port("1", name="p") == 1
     assert parse_tcp_port("65535", name="p") == 65535
@@ -107,9 +149,16 @@ def test_worker_config_rejects_bad_timeouts():
         EditWorkerConfig.from_environment({"MAGE_FLOW_EDIT_REQUEST_TIMEOUT_SECONDS": "inf"})
 
 
-def test_worker_config_accepts_loopback_ipv6_and_ports():
+def test_worker_config_rejects_false_ipv6_and_localhost():
+    with pytest.raises(ConfigError):
+        T2IWorkerConfig.from_environment({"MAGE_FLOW_T2I_INTERNAL_URL": "http://[::1]:8101"})
+    with pytest.raises(ConfigError):
+        EditWorkerConfig.from_environment({"MAGE_FLOW_EDIT_INTERNAL_URL": "http://localhost:8102"})
+
+
+def test_worker_config_accepts_ipv4_loopback_and_ports():
     cfg = T2IWorkerConfig.from_environment(
-        {"MAGE_FLOW_T2I_INTERNAL_URL": "http://[::1]:8101", "MAGE_FLOW_T2I_REQUEST_TIMEOUT_SECONDS": "60"}
+        {"MAGE_FLOW_T2I_INTERNAL_URL": "http://127.0.0.1:8101", "MAGE_FLOW_T2I_REQUEST_TIMEOUT_SECONDS": "60"}
     )
-    assert cfg.internal_url == "http://[::1]:8101"
+    assert cfg.internal_url == "http://127.0.0.1:8101"
     assert cfg.request_timeout_seconds == 60.0

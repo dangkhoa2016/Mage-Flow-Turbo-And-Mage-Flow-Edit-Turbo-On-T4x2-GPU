@@ -21,6 +21,13 @@ if str(_PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(_PACKAGE_ROOT))
 
 from server.images import ImageValidationError, decode_validated_worker_image  # noqa: E402
+from server.safety.wiring import (  # noqa: E402
+    clear_current_request_id,
+    install_and_audit_safety,
+    install_timing_probes,
+    set_current_request_id,
+    timing_report,
+)
 
 MODEL_NAME = "mage-flow-edit-turbo"
 REQUIRED_DEVICE = "cuda:1"
@@ -146,6 +153,7 @@ class RuntimeState:
         self.ready = False
         self.gpu_names: list[str] = []
         self.edit_lock = threading.Lock()
+        self.safety_adapter: Any = None
 
     def load(self) -> None:
         model_dir = Path(self.model_path)
@@ -186,6 +194,10 @@ class RuntimeState:
         set_attn_backend("sdpa")
         log("INFO", "attention backend set to sdpa (flash-attn not installed)")
 
+        self.safety_adapter = install_and_audit_safety(self.pipeline, request_type="EDIT")
+        log("PASS", "EDIT_GGUF_SAFETY_INSTALLED backend=gguf")
+        install_timing_probes("EDIT")
+
         self.ready = True
         log("PASS", f"EDIT_WORKER_READY model={MODEL_NAME} device={self.device}")
 
@@ -203,23 +215,28 @@ class RuntimeState:
             f"device={self.device} source_size={image.size}",
         )
         with Heartbeat("edit_generate"):
-            images = self.pipeline.edit(
-                [request["prompt"]],
-                [image],
-                neg_prompts=[" "],
-                seeds=[request["seed"]],
-                steps=EDIT_STEPS,
-                cfg=EDIT_CFG,
-                prompt_template=PROMPT_TEMPLATE,
-                vl_cond_long_edge=VL_COND_LONG_EDGE,
-                max_size=EDIT_MAX_SIZE,
-            )
+            set_current_request_id(f"edit_{request['seed']}")
+            try:
+                images = self.pipeline.edit(
+                    [request["prompt"]],
+                    [image],
+                    neg_prompts=[" "],
+                    seeds=[request["seed"]],
+                    steps=EDIT_STEPS,
+                    cfg=EDIT_CFG,
+                    prompt_template=PROMPT_TEMPLATE,
+                    vl_cond_long_edge=VL_COND_LONG_EDGE,
+                    max_size=EDIT_MAX_SIZE,
+                )
+            finally:
+                clear_current_request_id()
         if not isinstance(images, list) or len(images) != 1 or images[0] is None:
             raise RuntimeError("MageFlowPipeline.edit returned an unexpected result")
 
         result_image = images[0]
         width, height = result_image.size
         elapsed = time.monotonic() - started
+        timing_report("EDIT")
         log("PASS", f"edit completed elapsed={elapsed:.3f}s actual_size={width}x{height}")
         return {
             "id": f"img_{uuid.uuid4().hex}",
@@ -326,8 +343,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    if args.host not in {"127.0.0.1", "localhost", "::1"}:
-        raise SystemExit("[FAIL] internal Edit worker must bind to localhost only")
+    if args.host != "127.0.0.1":
+        raise SystemExit("[FAIL] internal Edit worker must bind to 127.0.0.1 only")
 
     print("=" * 60, flush=True)
     log("STAGE", "Mage-Flow Edit Turbo runtime worker")
