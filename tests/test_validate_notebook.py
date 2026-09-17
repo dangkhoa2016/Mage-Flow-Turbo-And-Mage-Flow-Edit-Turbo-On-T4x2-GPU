@@ -34,6 +34,10 @@ def test_validator_passes_on_generated_notebook():
     result = _run_validator(NOTEBOOK)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "NOTEBOOK_STRUCTURE_VALID" in result.stdout
+    assert "PROJECT_SOURCE_BOOTSTRAP_CONTRACT_VALID" in result.stdout
+    assert "RUNTIME_CACHE_BOOTSTRAP_CONTRACT_VALID" in result.stdout
+    assert "FRESH_BOOTSTRAP_ORDER_VALID" in result.stdout
+    assert "CREDENTIAL_HYGIENE_VALID" in result.stdout
 
 
 def _find_stage_cell(nb, stage: str):
@@ -112,6 +116,59 @@ def test_notebook_token_file_delegates_to_fail_closed_token_store():
     code_text = "\n".join("".join(c.get("source", [])) for c in nb["cells"] if c["cell_type"] == "code")
     assert "from scripts.token_store import ensure_token" in code_text
     assert "token_file.write_text(" not in code_text
+
+    # R1K0-R1 bootstrap contract: exact public-GitHub source + runtime cache.
+    assert "https://github.com/dangkhoa2016/Mage-Flow-Turbo-Dual-T4-REST-API.git" in code_text
+    assert "db6e3fba417b2f6aa0dc5e1dbaf1ccae68c892e0" in code_text
+    assert "/kaggle/working/mage-flow-t4x2-production-rest-api-demo" in code_text
+    assert "dangkhoa2016/mage-flow-t4x2-runtime-cache" in code_text
+    assert "/kaggle/input/datasets/dangkhoa2016/mage-flow-t4x2-runtime-cache" in code_text
+    assert "/kaggle/input/mage-flow-t4x2-runtime-cache" not in code_text
+    assert "mage-flow-t4x2-c1-runtime-py312-torch213-cu126.tar.zst" in code_text
+    assert "3381276345" in code_text
+    assert "f1cd0174c7f8b508feafd1132bf934aeb8f15e5f7832d7dc0b68d7ac788d62d5" in code_text
+    assert "/kaggle/working/mage-flow-v5-t4x2-c1-concurrency-source-20260912" in code_text
+    assert "76bec2bb3818863f470de7e867c2dc7f1d0bfd83" in code_text
+
+    # Strict ordering: source verification -> sys.path insert -> token_store import,
+    # and runtime archive hash verification before extraction.
+    lines = code_text.splitlines()
+
+    def _first_line(needle):
+        for idx, line in enumerate(lines):
+            if needle in line:
+                return idx
+        raise AssertionError(f"missing {needle!r} in notebook code")
+
+    assert _first_line("verify_exact_sha256(RUNTIME_ARCHIVE") < _first_line(
+        "BOOTSTRAP_RUNTIME_RESTORE_COUNT = restore_runtime_once()"
+    )
+    assert _first_line("PROJECT_SOURCE_BOOTSTRAP_COUNT = restore_project_source_once()") < _first_line(
+        "sys.path.insert(0, str(PROJECT_ROOT))"
+    )
+    assert _first_line("sys.path.insert(0, str(PROJECT_ROOT))") < _first_line(
+        "from scripts.token_store import ensure_token"
+    )
+
+    # No superseded source-snapshot Dataset design, no Kaggle credentials,
+    # no pip install / git pull / model or runtime fetch / unversioned checkout.
+    for forbidden in (
+        "mage-flow-turbo-dual-t4-rest-api-source-r1a1",
+        "project-source-e1825264",
+        "SOURCE_COMMIT.txt",
+        "source-manifest.json",
+        "KAGGLE_TOKEN",
+        "KAGGLE_KEY",
+        "kaggle.json",
+        "pip install",
+        "git pull",
+        "wget",
+        "curl",
+        "model download",
+        "runtime archive download",
+        "origin/main",
+    ):
+        assert forbidden not in code_text, f"forbidden notebook string present: {forbidden}"
 
 
 def _first_code_cell():
