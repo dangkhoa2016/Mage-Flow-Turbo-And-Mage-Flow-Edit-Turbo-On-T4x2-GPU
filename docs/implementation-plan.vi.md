@@ -53,7 +53,7 @@ Notebook dùng các stage `00`–`19`. Mỗi code cell đều có phần hướn
 
 Trạng thái: **đang chờ**.
 
-Source-level cannonicalization closeout đã hoàn tất; công việc còn lại chỉ liên quan publication và không yêu cầu GPU re-qualification.
+Source-level canonicalization closeout đã hoàn tất. Historical/local T4 x2 acceptance evidence vẫn có giá trị cho public acceptance surface đã freeze, nhưng formal GPU qualification gate trong canonical chain hiện tại chưa được thực thi.
 
 Các bước chỉ liên quan publication còn lại:
 
@@ -63,4 +63,4 @@ Các bước chỉ liên quan publication còn lại:
 4. Xác minh public saved notebook version.
 5. Chỉ tag/release `v1.0.0` sau khi publication checks PASS.
 
-Không cần rerun GPU qualification cho các bước metadata/publication này.
+Các corrective metadata/publication này không authorize việc rerun GPU qualification. Mọi formal GPU qualification chỉ được phép bắt đầu qua gate riêng sau khi chuỗi P14/P15 hiện tại được authorize phù hợp.
