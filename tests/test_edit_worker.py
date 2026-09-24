@@ -1,5 +1,3 @@
-[Reading 637 lines from start (total: 637 lines, 0 remaining)]
-
 import base64
 import io
 import json
@@ -637,5 +635,3 @@ def test_coordinator_rejects_whitespace_edit_prompt_before_readiness(monkeypatch
         assert "prompt must be a non-empty string" in response.json()["detail"]
     finally:
         app.state.edit_worker = old
-
-[executed on device: 678bb6fc01ff (535c2841-6353-404d-a061-a53a9127c90d)]
