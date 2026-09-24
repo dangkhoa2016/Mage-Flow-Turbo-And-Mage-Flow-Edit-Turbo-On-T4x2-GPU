@@ -125,6 +125,18 @@ def validate_edit_payload(payload: Any) -> dict[str, Any]:
     return {"prompt": prompt, "seed": seed, "image_bytes": image_bytes}
 
 
+def release_edit_cuda_cache(torch_module: Any, device_index: int = 1) -> None:
+    """Release unused CUDA allocator cache owned by the Edit worker.
+
+    The Edit model remains resident on cuda:1. Only unused cached allocator
+    segments from the completed request are returned so the T2I conditioning
+    offload can recover its documented GPU1 headroom.
+    """
+    torch_module.cuda.synchronize(device_index)
+    torch_module.cuda.empty_cache()
+    torch_module.cuda.synchronize(device_index)
+
+
 def validate_gpu_contract(device: str) -> tuple[Any, list[str]]:
     if device != REQUIRED_DEVICE:
         raise RuntimeError(f"Edit worker must use {REQUIRED_DEVICE}; got {device}")
@@ -216,6 +228,7 @@ class RuntimeState:
         )
         with Heartbeat("edit_generate"):
             set_current_request_id(f"edit_{request['seed']}")
+            generation_error: BaseException | None = None
             try:
                 images = self.pipeline.edit(
                     [request["prompt"]],
@@ -228,8 +241,23 @@ class RuntimeState:
                     vl_cond_long_edge=VL_COND_LONG_EDGE,
                     max_size=EDIT_MAX_SIZE,
                 )
+            except BaseException as exc:
+                generation_error = exc
+                raise
             finally:
                 clear_current_request_id()
+                try:
+                    import torch
+
+                    release_edit_cuda_cache(torch, device_index=1)
+                    log("INFO", "EDIT_CUDA_CACHE_RELEASED device=cuda:1")
+                except BaseException as cleanup_exc:
+                    if generation_error is None:
+                        raise
+                    log(
+                        "WARN",
+                        f"EDIT_CUDA_CACHE_RELEASE_FAILED {type(cleanup_exc).__name__}: {cleanup_exc}",
+                    )
         if not isinstance(images, list) or len(images) != 1 or images[0] is None:
             raise RuntimeError("MageFlowPipeline.edit returned an unexpected result")
 
