@@ -1,3 +1,5 @@
+[Reading 637 lines from start (total: 637 lines, 0 remaining)]
+
 import base64
 import io
 import json
@@ -14,6 +16,7 @@ from server.workers.edit import (
 from server.workers.edit_runtime_server import (
     decode_image_bytes,
     main,
+    release_edit_cuda_cache,
     resolve_edit_max_size,
     validate_edit_payload,
     validate_gpu_contract,
@@ -244,6 +247,32 @@ def test_runtime_payload_rejects_malformed_base64_image():
 def test_decode_image_bytes_rejects_garbage_bytes():
     with pytest.raises(ValueError, match="invalid image payload"):
         decode_image_bytes(b"this is not an image at all" * 100)
+
+
+class _FakeCudaCache:
+    def __init__(self):
+        self.calls = []
+
+    def synchronize(self, index):
+        self.calls.append(("synchronize", index))
+
+    def empty_cache(self):
+        self.calls.append(("empty_cache", None))
+
+
+class _FakeTorchCache:
+    def __init__(self):
+        self.cuda = _FakeCudaCache()
+
+
+def test_release_edit_cuda_cache_synchronizes_and_empties_cuda1():
+    fake = _FakeTorchCache()
+    release_edit_cuda_cache(fake, device_index=1)
+    assert fake.cuda.calls == [
+        ("synchronize", 1),
+        ("empty_cache", None),
+        ("synchronize", 1),
+    ]
 
 
 def test_gpu_contract_requires_cuda1_only():
@@ -608,3 +637,5 @@ def test_coordinator_rejects_whitespace_edit_prompt_before_readiness(monkeypatch
         assert "prompt must be a non-empty string" in response.json()["detail"]
     finally:
         app.state.edit_worker = old
+
+[executed on device: 678bb6fc01ff (535c2841-6353-404d-a061-a53a9127c90d)]
