@@ -53,7 +53,7 @@ The notebook uses stages `00`–`19`. Every code cell is preceded by bilingual E
 
 Status: **pending**.
 
-Source-level cannonicalization closeout is complete; remaining work is publication-only and does not require GPU re-qualification.
+Source-level canonicalization closeout is complete. Historical/local T4 x2 acceptance evidence remains valid for the frozen public acceptance surface, but the formal GPU qualification gate in the current canonical chain has not been executed.
 
 Remaining publication-only steps:
 
@@ -63,4 +63,4 @@ Remaining publication-only steps:
 4. Verify the saved public notebook version.
 5. Tag/release `v1.0.0` only after publication checks pass.
 
-No GPU qualification rerun is needed for these metadata/publication steps.
+These metadata/publication corrections do not authorize a GPU qualification rerun. Any formal GPU qualification must be entered only through its separately authorized gate after the current P14/P15 chain.
