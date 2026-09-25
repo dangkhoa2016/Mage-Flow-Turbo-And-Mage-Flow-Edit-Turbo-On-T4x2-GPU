@@ -329,14 +329,16 @@ class LiveAcceptance:
         image.save(buffer, format="PNG")
         return buffer.getvalue()
 
-    def run(self) -> AcceptanceResult:
+    def run(self, *, control_plane_only: bool = False) -> AcceptanceResult:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.health()
         self.wait_ready()
         self.security_cheap_checks()
         self.info()
-        self.t2i_generation()
-        self.edit_generation()
+        if not control_plane_only:
+            self.t2i_generation()
+            self.edit_generation()
+        self.summary["mode"] = "control-plane-only" if control_plane_only else "full"
         self.summary["passed"] = True
         self.summary["completed_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         summary_path = self.output_dir / "acceptance-summary.json"
@@ -355,6 +357,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--token", default=None)
     parser.add_argument("--output-dir", default=".runtime/acceptance")
     parser.add_argument("--edit-source", default=DEFAULT_EDIT_SOURCE)
+    parser.add_argument(
+        "--control-plane-only",
+        action="store_true",
+        help="Run health/readiness/security/info checks only; skip T2I/Edit generation.",
+    )
     return parser.parse_args()
 
 
@@ -371,11 +378,12 @@ def main() -> int:
         edit_source=Path(args.edit_source),
     )
     try:
-        result = runner.run()
+        result = runner.run(control_plane_only=args.control_plane_only)
     except Exception as exc:
         log("FAIL", f"{type(exc).__name__}: {exc}")
         return 1
-    log("PASS", f"LIVE_REST_ACCEPTANCE passed={result.passed}")
+    label = "CONTROL_PLANE_ACCEPTANCE" if args.control_plane_only else "LIVE_REST_ACCEPTANCE"
+    log("PASS", f"{label} passed={result.passed}")
     return 0
 
 

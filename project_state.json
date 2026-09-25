@@ -1,5 +1,5 @@
 {
-  "project_stage": "github_published_pending_kaggle_publication",
+  "project_stage": "release_candidate_external_kaggle_evidence",
   "runtime": {
     "accelerator": "Kaggle NVIDIA T4 x2",
     "t2i_device": "cuda:0",
@@ -46,8 +46,7 @@
   },
   "public_notebook_validation": {
     "structural_validation": true,
-    "live_run_all": false,
-    "saved_version_verified": false
+    "release_evidence": "external_kaggle_saved_version"
   },
   "gpu_acceptance": {
     "accelerator_topology": "NVIDIA T4 x2",

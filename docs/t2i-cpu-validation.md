@@ -2,9 +2,9 @@
 
 > 🌐 Language / Ngôn ngữ: **English** | [Tiếng Việt](t2i-cpu-validation.vi.md)
 
-This document records the CPU-safe source-validation scope. It does not substitute for GPU acceptance. Historical/local T4 x2 acceptance completed for the frozen public acceptance surface; this must not be read as the formal GPU qualification gate of the current canonical chain, which has not been executed.
+This document records the CPU-safe source-validation scope. It does not substitute for GPU acceptance. GPU release checks are performed separately on the exact revision selected for publication.
 
-Record date: 2026-09-16. Validation closeout at HEAD: the counts below reflect the repository validation state at this commit (474 tests).
+Record date: 2026-09-16. Historical validation snapshot: the counts below reflect that recorded revision (474 tests), not the current branch test count. Current validation authority is the latest GitHub Actions run for the release revision.
 
 ## Result
 
@@ -55,4 +55,4 @@ Edit GPU acceptance   PASS (historical/local T4 x2 acceptance)
 
 ## Boundary
 
-CPU-only validation proves source wiring and fail-closed behavior. Real model load, device residency, and image generation/editing are established by the historical/local accepted Kaggle NVIDIA T4 x2 run, not by this CPU-safe test path. Formal canonical-chain GPU qualification remains a separate, not-yet-executed gate.
+CPU-only validation proves source wiring and fail-closed behavior. Real model load, device residency, and image generation/editing require the Kaggle NVIDIA T4 x2 workflow and are verified separately for the revision selected for release.

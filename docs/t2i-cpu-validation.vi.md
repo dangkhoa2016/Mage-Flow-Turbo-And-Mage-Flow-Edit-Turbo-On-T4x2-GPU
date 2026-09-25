@@ -2,9 +2,9 @@
 
 > 🌐 Language / Ngôn ngữ: [English](t2i-cpu-validation.md) | **Tiếng Việt**
 
-Tài liệu này ghi lại phạm vi source validation CPU-safe. Nó không thay thế GPU acceptance. Historical/local T4 x2 acceptance đã hoàn tất cho public acceptance surface đã freeze; điều này không được hiểu là formal GPU qualification gate của canonical chain hiện tại, gate đó chưa được thực thi.
+Tài liệu này ghi lại phạm vi source validation CPU-safe. Nó không thay thế GPU acceptance. Các bước kiểm tra GPU cho release được thực hiện riêng trên đúng revision được chọn để publish.
 
-Ngày ghi nhận: 2026-09-16. Snapshot closeout validation tại HEAD: các con số dưới đây phản ánh trạng thái validation repository tại commit này (474 tests).
+Ngày ghi nhận: 2026-09-16. Đây là historical validation snapshot: các con số dưới đây phản ánh revision được ghi nhận lúc đó (474 tests), không phải test count hiện tại của branch. Validation authority hiện tại là GitHub Actions run mới nhất của release revision.
 
 ## Kết quả
 
@@ -55,4 +55,4 @@ Edit GPU acceptance   PASS (historical/local T4 x2 acceptance)
 
 ## Ranh giới xác minh
 
-CPU-only validation chứng minh source wiring và fail-closed behavior. Real model load, device residency và image generation/editing được chứng minh bởi historical/local accepted Kaggle NVIDIA T4 x2 run, không phải bởi CPU-safe test path này. Formal canonical-chain GPU qualification vẫn là một gate riêng và chưa được thực thi.
+CPU-only validation chứng minh source wiring và fail-closed behavior. Real model load, device residency và image generation/editing cần workflow Kaggle NVIDIA T4 x2 và được xác minh riêng cho revision được chọn để release.

@@ -50,7 +50,7 @@ Mage-Flow Edit Turbo chạy trên `cuda:1`:
 
 ## Mô hình resident service
 
-`scripts/run_public_acceptance.sh` khởi động hoặc tái sử dụng T2I/Edit worker đang healthy. Live acceptance không reload model. Public surface đã được acceptance ghi nhận resident-worker reuse và không re-extract runtime trong reuse path.
+`scripts/run_public_acceptance.sh` khởi động hoặc tái sử dụng T2I/Edit worker đang healthy và chạy control-plane acceptance mà không generate ảnh. Các stage inference sau đó của notebook thực hiện một request thật cho mỗi model. Evidence reuse ghi nhận worker residency ổn định và không re-extract runtime trên reuse path.
 
 ## Authentication boundary
 
@@ -61,4 +61,4 @@ Mage-Flow Edit Turbo chạy trên `cuda:1`:
 
 ## Phạm vi production claim
 
-Repository này trình diễn topology dạng production-style và fail-closed behavior. Nó không tuyên bố SLA-backed availability, high availability hoặc multi-tenant isolation.
+Repository này trình diễn workflow dual-GPU public với fail-closed behavior. Nó không tuyên bố SLA-backed availability, high availability hoặc multi-tenant isolation.

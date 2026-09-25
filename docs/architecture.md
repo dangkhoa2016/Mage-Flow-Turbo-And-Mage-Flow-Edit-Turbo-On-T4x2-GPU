@@ -50,7 +50,7 @@ Mage-Flow Edit Turbo runs on `cuda:1`:
 
 ## Resident service model
 
-`scripts/run_public_acceptance.sh` starts or reuses healthy resident T2I/Edit workers. Live acceptance does not reload the models. The accepted acceptance records resident-worker reuse and zero runtime re-extraction during the reuse path.
+`scripts/run_public_acceptance.sh` starts or reuses healthy resident T2I/Edit workers and performs control-plane acceptance without image generation. The notebook's later inference stages make one real request per model. Reuse evidence records stable worker residency and zero runtime re-extraction on the reuse path.
 
 ## Authentication boundary
 
@@ -61,4 +61,4 @@ Mage-Flow Edit Turbo runs on `cuda:1`:
 
 ## Production claim
 
-This repository demonstrates a production-style topology and fail-closed behavior. It does not claim SLA-backed availability, high availability, or multi-tenant isolation.
+This repository demonstrates a public dual-GPU workflow with fail-closed behavior. It does not claim SLA-backed availability, high availability, or multi-tenant isolation.

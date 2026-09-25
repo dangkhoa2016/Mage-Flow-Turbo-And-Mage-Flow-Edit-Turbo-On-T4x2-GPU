@@ -2,9 +2,9 @@
 """CPU-only structural validation of the public bilingual notebook.
 
 Checks (CPU-safe, no model load, no network):
-  1. Exact cell topology: 39 cells, stage 00 markdown-only intro, then
-     for stages 01-19 exactly one markdown cell followed by exactly one code
-     cell, all in ascending order with no missing/extra/reordered duplicates.
+  1. Exact cell topology: 39 cells, one unnumbered bilingual introduction,
+     then for stages 01-19 exactly one markdown cell followed by exactly one
+     code cell, all in ascending order with no missing/extra/reordered duplicates.
   2. Framework import location: torch is imported ONLY inside the stage
      03 (Verify NVIDIA T4 x2) GPU hardware-preflight code cell.
   3. Heartbeat enforcement: the long-running helper emits [HEARTBEAT].
@@ -14,8 +14,8 @@ Checks (CPU-safe, no model load, no network):
      production_claim must be present and non-empty.
   6. No operational ``assert`` safety gates in cells (gates must be explicit
      raises so they survive ``python -O``).
-  7. Stages 00-19 appear in order in markdown; a bilingual (EN + VI) markdown
-     cell precedes every code cell.
+  7. Numbered stages 01-19 appear in order in markdown; a bilingual (EN + VI)
+     markdown cell precedes every code cell.
   8. No forbidden internal labels, no CPU fallback, no model imports at cell
      scope, no heavy framework imports at import time.
 """
@@ -29,9 +29,12 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 NOTEBOOK = ROOT / "notebooks" / "mage-flow-turbo-and-mage-flow-edit-turbo-on-t4x2-gpu.ipynb"
 
-FORBIDDEN_LABELS = ("C3", "r4", "C2D1", "R5", "S29", "authority-source")
-EXPECTED_STAGES = tuple(f"{n:02d}" for n in range(20))
-EXPECTED_TOTAL_CELLS = 1 + 2 * (len(EXPECTED_STAGES) - 1)
+PRIVATE_WORKFLOW_LABEL_PATTERNS = (
+    r"\b[crs]\d+[a-z0-9]*\b",
+    r"\[[^]\n]*private[-_ ]workflow[^]\n]*\]",
+)
+EXPECTED_STAGES = tuple(f"{n:02d}" for n in range(1, 20))
+EXPECTED_TOTAL_CELLS = 1 + 2 * len(EXPECTED_STAGES)
 GPU_PREFLIGHT_STAGE = "03"
 HEARTBEAT_MARKER = "[HEARTBEAT]"
 FORBIDDEN_IMPORTS = (
@@ -57,9 +60,8 @@ def fail(msg):
 
 
 def expected_topology() -> list[tuple[str, str]]:
-    sequence: list[tuple[str, str]] = [("markdown", "00")]
-    for n in range(1, len(EXPECTED_STAGES)):
-        stage = f"{n:02d}"
+    sequence: list[tuple[str, str]] = [("markdown", "intro")]
+    for stage in EXPECTED_STAGES:
         sequence.append(("markdown", stage))
         sequence.append(("code", stage))
     return sequence
@@ -73,13 +75,13 @@ def check_topology(
     if len(cells) != EXPECTED_TOTAL_CELLS:
         fail(
             "stage sequence mismatch: expected exactly "
-            f"{EXPECTED_TOTAL_CELLS} cells ({len(EXPECTED_STAGES)} markdown + "
-            f"{len(EXPECTED_STAGES) - 1} code), got {len(cells)}"
+            f"{EXPECTED_TOTAL_CELLS} cells ({len(EXPECTED_STAGES) + 1} markdown + "
+            f"{len(EXPECTED_STAGES)} code), got {len(cells)}"
         )
-    if len(md_cells) != len(EXPECTED_STAGES):
-        fail(f"stage sequence mismatch: expected {len(EXPECTED_STAGES)} markdown cells, got {len(md_cells)}")
-    if len(code_cells) != len(EXPECTED_STAGES) - 1:
-        fail(f"stage sequence mismatch: expected {len(EXPECTED_STAGES) - 1} code cells, got {len(code_cells)}")
+    if len(md_cells) != len(EXPECTED_STAGES) + 1:
+        fail(f"stage sequence mismatch: expected {len(EXPECTED_STAGES) + 1} markdown cells, got {len(md_cells)}")
+    if len(code_cells) != len(EXPECTED_STAGES):
+        fail(f"stage sequence mismatch: expected {len(EXPECTED_STAGES)} code cells, got {len(code_cells)}")
     expected = expected_topology()
     for index, (cell, (cell_type, stage)) in enumerate(zip(cells, expected, strict=False)):
         if cell["cell_type"] != cell_type:
@@ -89,7 +91,14 @@ def check_topology(
         if cell_type != "markdown":
             continue
         source = "".join(cell.get("source", []))
-        if not re.match(rf"#+\s+{re.escape(stage)}\b", source.strip()):
+        if stage == "intro":
+            expected_title = "# Mage-Flow-Turbo and Mage-Flow-Edit-Turbo on T4x2 GPU - Demo"
+            stripped = source.strip()
+            if not stripped.startswith(expected_title):
+                fail("stage sequence mismatch: markdown cell @0 expected project title")
+            if "## Introduction + requirements" not in source:
+                fail("stage sequence mismatch: markdown cell @0 expected unnumbered introduction heading")
+        elif not re.match(rf"#+\s+{re.escape(stage)}\b", source.strip()):
             fail(f"stage sequence mismatch: markdown cell @{index} expected heading stage {stage}")
 
 
@@ -175,9 +184,9 @@ def main():
     combined_md = "\n".join(full_md)
     combined_all = combined_md + "\n" + "\n".join("".join(c.get("source", [])) for c in code_cells)
 
-    for label in FORBIDDEN_LABELS:
-        if re.search(rf"\b{re.escape(label)}\b", combined_all):
-            fail(f"forbidden internal label present: {label}")
+    for pattern in PRIVATE_WORKFLOW_LABEL_PATTERNS:
+        if re.search(pattern, combined_all, flags=re.I):
+            fail("private workflow label present")
 
     found_stages: list[str] = []
     for m in full_md:
@@ -235,13 +244,17 @@ def main():
         fail("metadata production_claim missing or empty")
 
     print(f"[INFO] valid notebook cells: {len(code_cells)} code, {len(md_cells)} markdown")
-    print("[INFO] exact topology (stage 00 intro + 01-19 markdown/code pairs) enforced")
+    print("[INFO] exact topology (unnumbered intro + 01-19 markdown/code pairs) enforced")
     print("[INFO] torch restricted to the GPU hardware-preflight cell")
     print(f"[INFO] {HEARTBEAT_MARKER} heartbeat helper enforced")
     print("[INFO] execution-clean state and no operational assert gates enforced")
     print("[INFO] metadata authority enforced (python3 kernel, runtime_target, production_claim)")
     print("[INFO] every code cell compiles (CPU-safe compile, no execution)")
-    print("[INFO] stages 00-19 present in order, bilingual markdown before every code cell")
+    print(
+        "[INFO] stages 01-19 present in order after the unnumbered intro; ",
+        "bilingual markdown precedes every code cell",
+        sep="",
+    )
     print("[INFO] no forbidden labels, no CPU fallback, no model imports at cell scope")
     print("[PASS] NOTEBOOK_STRUCTURE_VALID")
 

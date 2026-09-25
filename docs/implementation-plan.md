@@ -7,7 +7,7 @@
 Status: **complete**.
 
 - Local Git project on branch `main`.
-- Public source remains separate from internal qualification/evidence artifacts.
+- The repository contains only public source, tests, documentation, and release-facing assets.
 - Packaging, tests, lifecycle scripts, and documentation live in one reviewable repository.
 - License selected: MIT (see `LICENSE`).
 
@@ -40,27 +40,27 @@ Status: **complete**.
 - `scripts/run_public_acceptance.sh` validates runtime, model mounts, source commit, token handling, and T4 x2 topology.
 - Healthy resident workers are reused instead of reloaded.
 - Coordinator readiness is fail-closed until both workers are ready.
-- Live acceptance verifies health, readiness, runtime info, T2I generation, Edit generation, image validity, latency, and output checksums.
+- Control-plane acceptance verifies health, readiness, security, runtime info, and device routing; later notebook stages perform one real T2I inference and one real Edit inference and verify image validity, latency metadata, and output checksums.
 - Accepted acceptance records resident reuse, no runtime re-extraction, and no vendor source modification.
 
 ## Phase D — bilingual Kaggle notebook
 
-Status: **structural validation PASS; public live Run All pending**.
+Status: **structural validation PASS; release execution evidence is external**.
 
-The notebook uses stages `00`–`19`. Every code cell is preceded by bilingual English/Vietnamese guidance. Offline validation checks stage structure, public-safe labels, no CPU fallback, and no heavy model imports at notebook cell scope.
+The notebook uses an unnumbered bilingual introduction followed by stages `01`–`19`. Every code cell is preceded by bilingual English/Vietnamese guidance. Offline validation checks stage structure, public-safe labels, no CPU fallback, and no heavy model imports at notebook cell scope. The final Kaggle Saved Version is release evidence and is intentionally recorded outside the source tree.
 
 ## Phase E — publication
 
-Status: **pending**.
+Status: **source complete; external release evidence required before tagging**.
 
-Source-level canonicalization closeout is complete. Historical/local T4 x2 acceptance evidence remains valid for the frozen public acceptance surface, but the formal GPU qualification gate in the current canonical chain has not been executed.
+The public source layout is complete. T4 x2 acceptance has been exercised on the supported runtime. Final execution evidence is produced as a Kaggle Saved Version against the exact revision selected for release and is linked from the GitHub Release rather than written back into source metadata.
 
-Remaining publication-only steps:
+Publication sequence:
 
-1. Freeze publication metadata and repository description.
-2. Create the official GitHub repository and push the clean rewritten history.
-3. Run the public Kaggle notebook end-to-end from a clean saved-version context.
-4. Verify the saved public notebook version.
-5. Tag/release `v1.0.0` only after publication checks pass.
+1. Freeze publication metadata and repository history.
+2. Run the public Kaggle notebook end-to-end from a clean saved-version context.
+3. Verify that the Saved Version is bound to the exact frozen release revision.
+4. Tag/release `v1.0.0` without changing the verified source tree.
+5. Link the Saved Version and its log/output evidence from the GitHub Release.
 
-These metadata/publication corrections do not authorize a GPU qualification rerun. Any formal GPU qualification must be entered only through its separately authorized gate after the current P14/P15 chain.
+This avoids a circular workflow where recording a successful run in source would itself change the revision that was verified.

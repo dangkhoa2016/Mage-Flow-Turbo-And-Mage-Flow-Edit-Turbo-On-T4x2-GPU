@@ -2,7 +2,7 @@
 
 > 🌐 Language / Ngôn ngữ: **English** | [Tiếng Việt](limitations.vi.md)
 
-This project targets a production-style demo, not a production service with operational guarantees.
+This project targets a reproducible public Kaggle workflow, not a production service with operational guarantees.
 
 It does not claim:
 

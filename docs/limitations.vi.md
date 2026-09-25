@@ -2,7 +2,7 @@
 
 > 🌐 Language / Ngôn ngữ: [English](limitations.md) | **Tiếng Việt**
 
-Project này nhắm đến một production-style demo, không phải production service có bảo đảm vận hành.
+Project này nhắm đến một workflow Kaggle public có thể tái lập, không phải production service có bảo đảm vận hành.
 
 Project không tuyên bố:
 

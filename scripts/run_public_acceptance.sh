@@ -19,6 +19,15 @@ T2I_MODEL="$(python scripts/runtime_config.py resolve-model-path --kind t2i)"
 EDIT_MODEL="$(python scripts/runtime_config.py resolve-model-path --kind edit)"
 EDIT_SOURCE="${MAGE_FLOW_EDIT_SOURCE_IMAGE:-$EDIT_MODEL/assets/dog.jpg}"
 
+SUPPORT_ROOT="${MAGE_FLOW_SUPPORT_ROOT:-/kaggle/input/datasets/dangkhoa2016/mage-flow-t4x2-runtime-support}"
+GGUF_ROOT="${MAGE_FLOW_GGUF_MODEL_ROOT:-/kaggle/input/models/dangkhoa2016/qwen-qwen3-vl-4b-instruct-gguf/gguf/q4-k-m/1}"
+LLAMA_SOURCE="$SUPPORT_ROOT/bin/llama-server"
+LLAMA_SHA256="7b969b3f3dcaa1e8c7809b8223ffb6c86d0652135ae0a6109476e6078800bc2e"
+GGUF_MODEL="$GGUF_ROOT/Qwen3VL-4B-Instruct-Q4_K_M.gguf"
+GGUF_MMPROJ="$GGUF_ROOT/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf"
+SAFETY_PORT="${MAGE_GGUF_SAFETY_PORT:-8081}"
+SAFETY_URL="http://127.0.0.1:${SAFETY_PORT}"
+
 # Single authoritative configuration model: ports are read once and everything
 # else is derived from them, so startup and health/routing cannot diverge.
 T2I_PORT="${MAGE_FLOW_T2I_INTERNAL_PORT:-8101}"
@@ -32,6 +41,8 @@ export MAGE_FLOW_EDIT_INTERNAL_URL="$EDIT_URL"
 
 python scripts/runtime_config.py validate-ports \
   --rest "$REST_PORT" --t2i "$T2I_PORT" --edit "$EDIT_PORT"
+python scripts/runtime_config.py validate-port \
+  --name MAGE_GGUF_SAFETY_PORT --value "$SAFETY_PORT"
 
 RUNTIME_DIR=".runtime"
 ACCEPT_DIR="$RUNTIME_DIR/acceptance"
@@ -40,6 +51,45 @@ TOKEN_FILE="$RUNTIME_DIR/api_token"
 bar() { printf '%s\n' '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'; }
 fail() { echo "[FAIL] $*" >&2; exit 1; }
 info() { echo "[INFO] $*"; }
+
+if [[ "$SAFETY_PORT" == "$REST_PORT" || "$SAFETY_PORT" == "$T2I_PORT" || "$SAFETY_PORT" == "$EDIT_PORT" ]]; then
+  fail "MAGE_GGUF_SAFETY_PORT must not collide with REST/T2I/Edit ports"
+fi
+
+safety_health_ok() {
+  python - "$SAFETY_URL/health" <<'PY' >/dev/null 2>&1
+import sys
+import urllib.request
+with urllib.request.urlopen(sys.argv[1], timeout=2) as response:
+    raise SystemExit(0 if response.status == 200 else 1)
+PY
+}
+
+safety_pid_matches() {
+  local pid
+  [[ -f "$RUNTIME_DIR/safety.pid" ]] || return 1
+  pid="$(cat "$RUNTIME_DIR/safety.pid" 2>/dev/null || true)"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  [[ -r "/proc/$pid/cmdline" ]] || return 1
+  tr '\0' ' ' < "/proc/$pid/cmdline" | grep -F -- "$RUNTIME_DIR/llama-server" >/dev/null
+}
+
+stop_new_safety() {
+  local pid
+  [[ "${SAFETY_STARTED:-0}" == "1" ]] || return 0
+  pid="$(cat "$RUNTIME_DIR/safety.pid" 2>/dev/null || true)"
+  if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null || true
+    for _ in {1..20}; do
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 1
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -9 "$pid" 2>/dev/null || true
+    fi
+  fi
+  rm -f "$RUNTIME_DIR/safety.pid"
+}
 
 # ---------------- transactional startup behaviour ----------------
 # Track processes started by THIS invocation so a failed run cleans up only
@@ -68,6 +118,7 @@ on_exit() {
   fi
   echo "[INFO] orchestrator terminated with rc=$rc; leaving pre-existing reused processes resident"
   cleanup_new_services
+  stop_new_safety
 }
 trap on_exit EXIT
 
@@ -134,6 +185,64 @@ else
   fail "hardware gate rejected (rc=$rc)"
 fi
 
+# ---------------- GGUF safety server (qualified public contract) ----------------
+[[ -f "$LLAMA_SOURCE" ]] || fail "llama-server missing: $LLAMA_SOURCE"
+[[ -f "$GGUF_MODEL" ]] || fail "GGUF safety model missing: $GGUF_MODEL"
+[[ -f "$GGUF_MMPROJ" ]] || fail "GGUF mmproj missing: $GGUF_MMPROJ"
+ACTUAL_LLAMA_SHA="$(sha256sum "$LLAMA_SOURCE" | awk '{print $1}')"
+[[ "$ACTUAL_LLAMA_SHA" == "$LLAMA_SHA256" ]] || fail "llama-server SHA mismatch: $ACTUAL_LLAMA_SHA"
+
+cp "$LLAMA_SOURCE" "$RUNTIME_DIR/llama-server"
+chmod 700 "$RUNTIME_DIR/llama-server"
+
+export MAGE_SAFETY_BACKEND=gguf
+export MAGE_GGUF_SAFETY_URL="$SAFETY_URL"
+export MAGE_GGUF_SAFETY_TIMEOUT_SECONDS="${MAGE_GGUF_SAFETY_TIMEOUT_SECONDS:-180}"
+export MAGE_SAFETY_AUDIT="$ACCEPT_DIR/safety-audit.jsonl"
+SAFETY_STARTED=0
+
+if safety_health_ok; then
+  safety_pid_matches || fail "healthy service already occupies $SAFETY_URL but does not match the expected llama-server"
+  info "existing healthy GGUF safety server -> REUSE (pid=$(cat "$RUNTIME_DIR/safety.pid"))"
+else
+  if [[ -f "$RUNTIME_DIR/safety.pid" ]]; then
+    pid="$(cat "$RUNTIME_DIR/safety.pid" 2>/dev/null || true)"
+    if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
+      safety_pid_matches || fail "safety.pid points to an unexpected live process: $pid"
+      kill "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+    fi
+    rm -f "$RUNTIME_DIR/safety.pid"
+  fi
+
+  echo "[STAGE] Start GGUF safety server"
+  CUDA_VISIBLE_DEVICES=0 nohup "$RUNTIME_DIR/llama-server" \
+    -m "$GGUF_MODEL" \
+    --mmproj "$GGUF_MMPROJ" \
+    --host 127.0.0.1 \
+    --port "$SAFETY_PORT" \
+    --ctx-size 4096 \
+    --n-gpu-layers 13 \
+    > "$RUNTIME_DIR/llama-server.log" 2>&1 &
+  echo $! > "$RUNTIME_DIR/safety.pid"
+  SAFETY_STARTED=1
+
+  DEADLINE=$((SECONDS + 180))
+  while (( SECONDS < DEADLINE )); do
+    if safety_health_ok; then
+      echo "[PASS] GGUF_SAFETY_SERVER_READY url=$SAFETY_URL"
+      break
+    fi
+    if ! kill -0 "$(cat "$RUNTIME_DIR/safety.pid")" 2>/dev/null; then
+      echo "[FAIL] GGUF safety server exited before readiness"
+      tail -n 120 "$RUNTIME_DIR/llama-server.log" || true
+      exit 1
+    fi
+    sleep 1
+  done
+  safety_health_ok || fail "GGUF safety server readiness timeout"
+fi
+
 # ---------------- stale PID / port detection ----------------
 is_endpoint_healthy() {
   local url="$1" model="$2" device="$3" model_path="$4"
@@ -167,7 +276,8 @@ if [[ -f "$RUNTIME_DIR/server.pid" ]] && ! python scripts/process_identity.py ch
   bash scripts/stop.sh || true
 fi
 
-# ---------------- workers (idempotent: reuse healthy resident processes) ----------------
+# ---------------- workers (sequential startup; idempotent reuse) ----------------
+# Keep model loads sequential to cap peak system RAM on Kaggle T4 x2 sessions.
 T2I_BEFORE_PID="$(cat "$RUNTIME_DIR/t2i.pid" 2>/dev/null || true)"
 bash scripts/start_t2i.sh
 T2I_AFTER_PID="$(cat "$RUNTIME_DIR/t2i.pid" 2>/dev/null || true)"
@@ -262,7 +372,8 @@ fi
 python scripts/acceptance.py \
   --base-url "$REST_URL" \
   --output-dir "$ACCEPT_DIR" \
-  --edit-source "$EDIT_SOURCE"
+  --edit-source "$EDIT_SOURCE" \
+  --control-plane-only
 
 # ---------------- PIDs after acceptance + reveal ----------------
 python - "$ACCEPT_DIR/pids_after.json" <<'PY'

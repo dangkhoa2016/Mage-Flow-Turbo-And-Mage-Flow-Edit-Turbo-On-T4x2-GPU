@@ -173,14 +173,10 @@ def check_project_state(root: Path) -> list[str]:
     notebook = state.get("public_notebook_validation", {})
     if notebook.get("structural_validation") is not True:
         errors.append("project_state public_notebook_validation.structural_validation must be true")
-    if notebook.get("live_run_all") is not False:
-        errors.append(
-            "project_state public_notebook_validation.live_run_all must remain false until fresh Kaggle evidence"
-        )
-    if notebook.get("saved_version_verified") is not False:
-        errors.append(
-            "project_state public_notebook_validation.saved_version_verified must remain false until verified"
-        )
+    if notebook.get("release_evidence") != "external_kaggle_saved_version":
+        errors.append("project_state public_notebook_validation.release_evidence must be external_kaggle_saved_version")
+    if "live_run_all" in notebook or "saved_version_verified" in notebook:
+        errors.append("project_state must not self-certify external Kaggle execution evidence with mutable booleans")
     if state.get("license_status") != "MIT":
         errors.append("project_state license_status must be MIT")
     public_notebook = state.get("public_notebook")

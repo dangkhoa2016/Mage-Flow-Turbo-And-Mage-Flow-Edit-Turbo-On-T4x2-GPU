@@ -43,6 +43,15 @@ def _find_stage_cell(nb, stage: str):
     raise AssertionError(f"stage cell {stage} not found")
 
 
+def _intro_cell(nb):
+    cell = nb["cells"][0]
+    assert cell["cell_type"] == "markdown"
+    source = "".join(cell["source"])
+    assert source.startswith("# Mage-Flow-Turbo and Mage-Flow-Edit-Turbo on T4x2 GPU - Demo")
+    assert "## Introduction + requirements" in source
+    return cell
+
+
 def test_validator_rejects_missing_stage(mutated_notebook):
     nb = json.loads(mutated_notebook.read_text())
     cell = _find_stage_cell(nb, "12")
@@ -76,10 +85,15 @@ def test_validator_rejects_reordered_stage(mutated_notebook):
     assert "stage sequence mismatch" in result.stdout
 
 
-def test_validator_rejects_unknown_stage(mutated_notebook):
+def test_validator_rejects_numbered_intro(mutated_notebook):
     nb = json.loads(mutated_notebook.read_text())
-    cell = _find_stage_cell(nb, "00")
-    cell["source"] = cell["source"][0].replace("## 00.", "## 99.", 2)
+    cell = _intro_cell(nb)
+    for i, line in enumerate(cell["source"]):
+        if line.startswith("## Introduction"):
+            cell["source"][i] = line.replace("## Introduction", "## 00. Introduction", 1)
+            break
+    else:
+        raise AssertionError("introduction heading not found")
     mutated_notebook.write_text(json.dumps(nb))
     result = _run_validator(mutated_notebook)
     assert result.returncode != 0
@@ -88,19 +102,19 @@ def test_validator_rejects_unknown_stage(mutated_notebook):
 
 def test_validator_rejects_forbidden_label(mutated_notebook):
     nb = json.loads(mutated_notebook.read_text())
-    cell = _find_stage_cell(nb, "00")
-    cell["source"] = [cell["source"][0] + "\n[internal S29 reference]"]
+    cell = _intro_cell(nb)
+    cell["source"].append("\n[private-workflow C27X reference]\n")
     mutated_notebook.write_text(json.dumps(nb))
     result = _run_validator(mutated_notebook)
     assert result.returncode != 0
-    assert "forbidden internal label" in result.stdout
+    assert "private workflow label present" in result.stdout
 
 
 def test_validator_rejects_missing_bilingual_markdown(mutated_notebook):
     nb = json.loads(mutated_notebook.read_text())
-    for _i, c in enumerate(nb["cells"]):
+    for c in nb["cells"]:
         if c["cell_type"] == "markdown" and "**English**" in "".join(c["source"]):
-            c["source"] = [c["source"][0].replace("**Tiếng Việt**", "**Tieng Viet**")]
+            c["source"] = [line.replace("**Tiếng Việt**", "**Tieng Viet**") for line in c["source"]]
     mutated_notebook.write_text(json.dumps(nb))
     result = _run_validator(mutated_notebook)
     assert result.returncode != 0
@@ -249,3 +263,19 @@ def test_validator_requires_heartbeat_helper(mutated_notebook):
     result = _run_validator(mutated_notebook)
     assert result.returncode != 0
     assert "HEARTBEAT" in result.stdout
+
+
+def test_notebook_rejects_stale_partial_runtime_before_reuse():
+    nb = json.loads(NOTEBOOK.read_text())
+    code_text = "\n".join("".join(c.get("source", [])) for c in nb["cells"] if c["cell_type"] == "code")
+    assert "os.access(RUNTIME_PYTHON, os.X_OK)" in code_text
+    assert "stale/partial runtime detected; restoring clean runtime" in code_text
+    assert "shutil.rmtree(RUNTIME_ROOT)" in code_text
+
+
+def test_notebook_refreshes_existing_public_checkout():
+    nb = json.loads(NOTEBOOK.read_text())
+    code_text = "\n".join("".join(c.get("source", [])) for c in nb["cells"] if c["cell_type"] == "code")
+    assert '"fetch", "--depth", "1", "origin", PUBLIC_BRANCH' in code_text
+    assert '"reset", "--hard", "FETCH_HEAD"' in code_text
+    assert "refreshing existing public source checkout to latest main" in code_text

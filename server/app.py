@@ -140,7 +140,7 @@ def info() -> dict:
             "mode": os.environ.get("MAGE_T2I_CONDITIONING_OFFLOAD", "off").strip().lower(),
             "cross_lane_serialized": _full_cross_lane_serialization_enabled(),
         },
-        "production_claim": "production-style demo; not SLA-backed, HA, or multi-tenant",
+        "production_claim": "public Kaggle workflow; not SLA-backed, HA, or multi-tenant",
     }
 
 

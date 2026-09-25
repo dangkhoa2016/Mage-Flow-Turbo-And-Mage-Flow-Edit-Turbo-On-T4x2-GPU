@@ -7,7 +7,7 @@
 Trạng thái: **hoàn tất**.
 
 - Local Git project trên branch `main`.
-- Public source được tách khỏi các artifact qualification/evidence nội bộ.
+- Repository chỉ chứa public source, test, documentation và các asset phục vụ release.
 - Packaging, test, lifecycle script và documentation nằm trong một repository có thể review.
 - License đã chọn: MIT (xem `LICENSE`).
 
@@ -40,27 +40,27 @@ Trạng thái: **hoàn tất**.
 - `scripts/run_public_acceptance.sh` xác minh runtime, model mount, source commit, token handling và topology T4 x2.
 - Worker resident đang healthy được tái sử dụng thay vì reload.
 - Coordinator readiness fail-closed cho đến khi cả hai worker ready.
-- Live acceptance kiểm tra health, readiness, runtime info, T2I generation, Edit generation, image validity, latency và output checksum.
+- Control-plane acceptance kiểm tra health, readiness, security, runtime info và device routing; các stage notebook sau đó thực hiện một inference T2I thật và một inference Edit thật rồi xác minh image validity, latency metadata và output checksum.
 - Public surface đã được acceptance ghi nhận resident reuse, không re-extract runtime và không sửa vendor source.
 
 ## Phase D — Kaggle notebook song ngữ
 
-Trạng thái: **structural validation PASS; public live Run All đang chờ**.
+Trạng thái: **structural validation PASS; release execution evidence được lưu bên ngoài source tree**.
 
-Notebook dùng các stage `00`–`19`. Mỗi code cell đều có phần hướng dẫn English/Vietnamese song ngữ ngay trước đó. Offline validation kiểm tra stage structure, public-safe label, không CPU fallback và không import model framework nặng ở cell scope.
+Notebook dùng phần giới thiệu song ngữ không đánh số, sau đó là các stage `01`–`19`. Mỗi code cell đều có phần hướng dẫn English/Vietnamese song ngữ ngay trước đó. Offline validation kiểm tra stage structure, public-safe label, không CPU fallback và không import model framework nặng ở cell scope. Kaggle Saved Version cuối cùng là release evidence và được ghi nhận có chủ đích bên ngoài source tree.
 
 ## Phase E — publication
 
-Trạng thái: **đang chờ**.
+Trạng thái: **source hoàn tất; cần external release evidence trước khi tag**.
 
-Source-level canonicalization closeout đã hoàn tất. Historical/local T4 x2 acceptance evidence vẫn có giá trị cho public acceptance surface đã freeze, nhưng formal GPU qualification gate trong canonical chain hiện tại chưa được thực thi.
+Bố cục public source đã hoàn tất. T4 x2 acceptance đã được chạy trên runtime được hỗ trợ. Execution evidence cuối cùng được tạo dưới dạng Kaggle Saved Version trên đúng revision được chọn để release và được liên kết từ GitHub Release thay vì ghi ngược trở lại source metadata.
 
-Các bước chỉ liên quan publication còn lại:
+Trình tự publication:
 
-1. Freeze publication metadata và repository description.
-2. Tạo official GitHub repository và push clean rewritten history.
-3. Chạy public Kaggle notebook end-to-end từ clean saved-version context.
-4. Xác minh public saved notebook version.
-5. Chỉ tag/release `v1.0.0` sau khi publication checks PASS.
+1. Freeze publication metadata và repository history.
+2. Chạy public Kaggle notebook end-to-end từ clean saved-version context.
+3. Xác minh Saved Version bind đúng frozen release revision.
+4. Tag/release `v1.0.0` mà không thay đổi source tree đã được xác minh.
+5. Liên kết Saved Version cùng log/output evidence từ GitHub Release.
 
-Các corrective metadata/publication này không authorize việc rerun GPU qualification. Mọi formal GPU qualification chỉ được phép bắt đầu qua gate riêng sau khi chuỗi P14/P15 hiện tại được authorize phù hợp.
+Cách này tránh vòng lặp tự tham chiếu trong đó việc ghi trạng thái run thành công vào source lại làm thay đổi chính revision vừa được xác minh.

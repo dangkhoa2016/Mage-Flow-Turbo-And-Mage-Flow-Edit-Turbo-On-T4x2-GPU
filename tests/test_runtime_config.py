@@ -235,6 +235,18 @@ def test_run_public_acceptance_validates_ports_and_token():
     assert "validate-token" in text
 
 
+def test_public_acceptance_wires_qualified_gguf_safety_server():
+    text = (ROOT / "scripts" / "run_public_acceptance.sh").read_text(encoding="utf-8")
+    assert "export MAGE_SAFETY_BACKEND=gguf" in text
+    assert 'export MAGE_GGUF_SAFETY_URL="$SAFETY_URL"' in text
+    assert 'LLAMA_SHA256="7b969b3f3dcaa1e8c7809b8223ffb6c86d0652135ae0a6109476e6078800bc2e"' in text
+    assert "Qwen3VL-4B-Instruct-Q4_K_M.gguf" in text
+    assert "mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf" in text
+    assert "--ctx-size 4096" in text
+    assert "--n-gpu-layers 13" in text
+    assert "GGUF_SAFETY_SERVER_READY" in text
+
+
 def test_start_sh_short_token_fails_before_coordinator_launch(tmp_path):
     env = dict(os.environ)
     env["MAGE_FLOW_API_TOKEN"] = "abc"
@@ -250,3 +262,19 @@ def test_start_sh_short_token_fails_before_coordinator_launch(tmp_path):
     combined = result.stdout + result.stderr
     assert "[FAIL]" in combined
     assert "Starting authenticated REST coordinator" not in combined
+
+
+def test_public_acceptance_uses_ram_safe_workers_and_skips_duplicate_generation():
+    orchestrator = (ROOT / "scripts" / "run_public_acceptance.sh").read_text(encoding="utf-8")
+    acceptance = (ROOT / "scripts" / "acceptance.py").read_text(encoding="utf-8")
+    assert "workers (sequential startup; idempotent reuse)" in orchestrator
+    assert "bash scripts/start_t2i.sh" in orchestrator
+    assert "bash scripts/start_edit.sh" in orchestrator
+    assert 'bash scripts/start_t2i.sh > "$RUNTIME_DIR/start-t2i-orchestrator.log" 2>&1 &' not in orchestrator
+    assert 'bash scripts/start_edit.sh > "$RUNTIME_DIR/start-edit-orchestrator.log" 2>&1 &' not in orchestrator
+    assert orchestrator.index("bash scripts/start_t2i.sh") < orchestrator.index("bash scripts/start_edit.sh")
+    assert "--control-plane-only" in orchestrator
+    assert '"--control-plane-only"' in acceptance
+    assert "if not control_plane_only:" in acceptance
+    assert "self.t2i_generation()" in acceptance
+    assert "self.edit_generation()" in acceptance

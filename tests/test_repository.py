@@ -47,8 +47,7 @@ def _valid_project_state() -> dict:
         "github_community_metadata_configured": True,
         "public_notebook_validation": {
             "structural_validation": True,
-            "live_run_all": False,
-            "saved_version_verified": False,
+            "release_evidence": "external_kaggle_saved_version",
         },
     }
 
@@ -138,8 +137,7 @@ def test_repository_validator_rejects_project_state_drift_default_root(tmp_path)
         (("t2i_integration", "internal_url"), "http://127.0.0.1:9999", "internal_url"),
         (("edit_integration", "internal_url"), "http://127.0.0.1:9999", "internal_url"),
         (("public_notebook_validation", "structural_validation"), False, "structural_validation"),
-        (("public_notebook_validation", "live_run_all"), True, "live_run_all"),
-        (("public_notebook_validation", "saved_version_verified"), True, "saved_version_verified"),
+        (("public_notebook_validation", "release_evidence"), "embedded_source_boolean", "release_evidence"),
         (("runtime", "accelerator"), "NVIDIA A100", "accelerator"),
     ],
 )
