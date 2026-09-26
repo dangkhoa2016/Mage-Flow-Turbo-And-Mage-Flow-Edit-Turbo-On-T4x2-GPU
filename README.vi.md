@@ -10,6 +10,17 @@
 
 Workflow Kaggle NVIDIA T4 x2 public chính thức cùng REST API có authentication cho Mage-Flow Turbo và Mage-Flow Edit Turbo.
 
+## Release v1.0.0
+
+- GitHub Release: [v1.0.0](https://github.com/dangkhoa2016/Mage-Flow-Turbo-And-Mage-Flow-Edit-Turbo-On-T4x2-GPU/releases/tag/v1.0.0)
+- Evidence Kaggle chính thức: [Saved Version 352899347](https://www.kaggle.com/code/dangkhoa2016/mage-flow-turbo-mage-flow-edit-turbo-t4x2-demo?scriptVersionId=352899347)
+- Release commit đã đóng băng: `f6bcbb4f8d577e6cd576e2ff48438710f89a93a5`
+- CI chạy trực tiếp trên tag: [run 36226798319](https://github.com/dangkhoa2016/Mage-Flow-Turbo-And-Mage-Flow-Edit-Turbo-On-T4x2-GPU/actions/runs/36226798319)
+- Evidence T2I chính thức: 1024×1024, 4 steps, seed 42, ~94.741 s
+- Evidence Edit chính thức: max size 1024, 4 steps, CFG 1.0, ~150.826 s
+
+Tag `v1.0.0` được bind vào release commit đã đóng băng ở trên. Kaggle Saved Version là runtime evidence bên ngoài cho đúng revision đó; các thay đổi về sau trên `main` không làm thay đổi release authority đã publish.
+
 ## Runtime mục tiêu
 
 - Worker text-to-image Mage-Flow-Turbo: `cuda:0`
@@ -49,7 +60,7 @@ Public acceptance surface T4 x2 GPU đã hoàn tất qualification local:
 - Bộ test CPU-safe: được cấu hình trong GitHub Actions cho ma trận Python đã khai báo.
 - Kaggle notebook song ngữ dùng phần giới thiệu không đánh số, sau đó là các stage `01`–`19`; structural validation offline PASS.
 
-Workflow public acceptance trên T4 x2 đã được chạy thành công trên runtime được hỗ trợ. Các bước kiểm tra release được thực hiện trên đúng revision được chọn để publish trước khi tạo version tag. Public notebook Run All từ clean saved-version context cùng saved-version verification vẫn thuộc checklist publication.
+Workflow public acceptance trên T4 x2 đã được chạy thành công trên runtime được hỗ trợ. Release `v1.0.0` hiện đã được publish từ đúng commit `f6bcbb4f8d577e6cd576e2ff48438710f89a93a5` và được chứng minh bằng public Kaggle Saved Version 352899347 đã xác minh. Release evidence tiếp tục được giữ bên ngoài source tree để source revision đã publish luôn bất biến.
 
 ## Chạy public acceptance surface trên Kaggle T4 x2
 
@@ -113,7 +124,9 @@ Validation ở mức repository bao gồm bộ pytest CPU-safe PASS và:
 ## Trạng thái publication
 
 - Workflow public acceptance trên T4 x2: đã được xác minh trên runtime được hỗ trợ
-- Xác minh GPU cho đúng revision: được thực hiện trong checklist release trước khi tạo tag
+- Xác minh GPU cho đúng revision: PASS cho `v1.0.0` tại `f6bcbb4f8d577e6cd576e2ff48438710f89a93a5`
+- GitHub Release: [v1.0.0](https://github.com/dangkhoa2016/Mage-Flow-Turbo-And-Mage-Flow-Edit-Turbo-On-T4x2-GPU/releases/tag/v1.0.0)
+- Kaggle Saved Version chính thức: [352899347](https://www.kaggle.com/code/dangkhoa2016/mage-flow-turbo-mage-flow-edit-turbo-t4x2-demo?scriptVersionId=352899347)
 - CPU-safe validation: PASS trên toàn bộ GitHub Actions matrix Python 3.10–3.14 đã khai báo
 - Source documentation song ngữ: đã có
 - Public notebook structural validation: hoàn tất
@@ -124,7 +137,7 @@ Validation ở mức repository bao gồm bộ pytest CPU-safe PASS và:
 - Python distribution: Mage-Flow-Turbo-And-Mage-Flow-Edit-Turbo-On-T4x2-GPU
 - Python package version: 1.0.0
 - Canonical support Dataset: `dangkhoa2016/mage-flow-t4x2-runtime-support` (datasetId `12144721`, version `2`)
-- Chính sách release: chỉ tạo tag `v1.0.0` sau khi Kaggle Saved Version cuối cùng được xác minh trên đúng release revision.
+- Trạng thái release: `v1.0.0` đã được đóng băng tại đúng release commit đã xác minh; các thay đổi tài liệu hậu-release trên `main` không rewrite tag hoặc Kaggle evidence đó.
 
 Execution evidence trên Kaggle được giữ bên ngoài source tree để việc xác minh Saved Version không bao giờ yêu cầu một source commit tự tham chiếu.
 

@@ -10,6 +10,17 @@
 
 Official public Kaggle NVIDIA T4 x2 workflow and authenticated REST API for Mage-Flow Turbo and Mage-Flow Edit Turbo.
 
+## v1.0.0 release
+
+- GitHub Release: [v1.0.0](https://github.com/dangkhoa2016/Mage-Flow-Turbo-And-Mage-Flow-Edit-Turbo-On-T4x2-GPU/releases/tag/v1.0.0)
+- Official Kaggle evidence: [Saved Version 352899347](https://www.kaggle.com/code/dangkhoa2016/mage-flow-turbo-mage-flow-edit-turbo-t4x2-demo?scriptVersionId=352899347)
+- Frozen release commit: `f6bcbb4f8d577e6cd576e2ff48438710f89a93a5`
+- Exact-tag CI: [run 36226798319](https://github.com/dangkhoa2016/Mage-Flow-Turbo-And-Mage-Flow-Edit-Turbo-On-T4x2-GPU/actions/runs/36226798319)
+- Official T2I evidence: 1024×1024, 4 steps, seed 42, ~94.741 s
+- Official Edit evidence: max size 1024, 4 steps, CFG 1.0, ~150.826 s
+
+The `v1.0.0` tag is bound to the frozen release commit above. The Kaggle Saved Version is the external runtime evidence for that exact revision; later changes on `main` do not alter the published release authority.
+
 ## Target runtime
 
 - Mage-Flow-Turbo text-to-image worker: `cuda:0`
@@ -49,7 +60,7 @@ The T4 x2 GPU public acceptance surface has completed local qualification:
 - CPU-safe test suite: configured in GitHub Actions for the declared Python matrix.
 - The bilingual Kaggle notebook uses an unnumbered introduction followed by stages `01`–`19`; offline structural validation passes.
 
-The public T4 x2 acceptance workflow has been exercised successfully on the supported runtime. Release checks are performed against the exact revision selected for publication before a version tag is created. A fresh public notebook Run All from a clean saved-version context, together with saved-version verification, remains part of the publication checklist.
+The public T4 x2 acceptance workflow has been exercised successfully on the supported runtime. Release `v1.0.0` is now published from exact commit `f6bcbb4f8d577e6cd576e2ff48438710f89a93a5` and is backed by the verified public Kaggle Saved Version 352899347. The release evidence remains external to the source tree so the published source revision stays immutable.
 
 ## Run the public acceptance surface on Kaggle T4 x2
 
@@ -113,7 +124,9 @@ Expected repository-level validation includes a passing CPU-safe pytest suite pl
 ## Publication state
 
 - T4 x2 public acceptance workflow: validated on the supported runtime
-- Exact-revision GPU verification: performed as part of the release checklist before tagging
+- Exact-revision GPU verification: PASS for `v1.0.0` at `f6bcbb4f8d577e6cd576e2ff48438710f89a93a5`
+- GitHub Release: [v1.0.0](https://github.com/dangkhoa2016/Mage-Flow-Turbo-And-Mage-Flow-Edit-Turbo-On-T4x2-GPU/releases/tag/v1.0.0)
+- Official Kaggle Saved Version: [352899347](https://www.kaggle.com/code/dangkhoa2016/mage-flow-turbo-mage-flow-edit-turbo-t4x2-demo?scriptVersionId=352899347)
 - CPU-safe validation: PASS across the declared Python 3.10–3.14 GitHub Actions matrix
 - Bilingual source documentation: included
 - Public notebook structural validation: complete
@@ -124,7 +137,7 @@ Expected repository-level validation includes a passing CPU-safe pytest suite pl
 - Python distribution: Mage-Flow-Turbo-And-Mage-Flow-Edit-Turbo-On-T4x2-GPU
 - Python package version: 1.0.0
 - Canonical support Dataset: `dangkhoa2016/mage-flow-t4x2-runtime-support` (datasetId `12144721`, version `2`)
-- Release policy: create the `v1.0.0` tag only after the final Kaggle Saved Version has been verified against the exact release revision.
+- Release state: `v1.0.0` is frozen at the exact verified release commit; post-release documentation changes on `main` do not rewrite that tag or its Kaggle evidence.
 
 Kaggle execution evidence is intentionally external to the source tree so verifying a Saved Version never requires a self-referential source commit.
 
